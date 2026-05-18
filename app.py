@@ -279,6 +279,10 @@ with tab2:
 with tab3:
     st.subheader("Bill of Quantities (BOQ) & Financial Overview")
     
+    # --- ADD THIS LINE TO FIX THE ERROR ---
+    concrete_volume = slab_area * t 
+    # --------------------------------------
+    
     weight_m = (math.pi / 4) * ((main_bar / 1000) ** 2) * 7850
     steel_len_x = (100 / s_xb * Lx) + (100 / s_xt * Lx * 0.5) 
     steel_len_y = (100 / s_yb * Ly) + (100 / s_yt * Ly * 0.5 if s_yt > 0 else 0)
