@@ -91,7 +91,7 @@ else:
         </p>
         <small style="color:#555;">*คำนวณต่อความกว้างแผ่นพื้น 1 เมตร และรวมเหล็กเสริมขั้นต่ำกันร้าวแล้ว</small>
     </div>
-    """, unsafe_allow_index=True)
+    """, unsafe_allow_html=True)
 
 # แสดงรายละเอียดการคำนวณภายใน (สำหรับผู้ที่ต้องการตรวจสอบ)
 with st.expander("🔍 ดูรายละเอียดพารามิเตอร์การคำนวณ (Engineering Parameters)"):
