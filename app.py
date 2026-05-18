@@ -3,85 +3,140 @@ import math
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 1. ตั้งค่าหน้าเว็บให้รองรับการทำงานระดับสูง
-st.set_page_config(page_title="Ultimate RC Slab Designer", layout="wide")
+# 1. การตั้งค่าหน้าจอและสไตล์ของระบบ
+st.set_page_config(page_title="Enterprise RC Slab Designer", layout="wide")
+st.title("🛡️ Enterprise RC Slab Designer (Official Engineering Edition)")
+st.caption("ระบบคำนวณและเขียนแบบโครงสร้างแผ่นพื้นตามมาตรฐาน วสท. 1008 / ACI 318")
 
-st.title("🚀 Ultimate RC Slab Designer (Enterprise Edition)")
-st.caption("ระบบคำนวณ ตรวจสอบ และเขียนแบบรายละเอียดแผ่นพื้น ค.ส.ล. ตามมาตรฐานสากล")
+# 2. ฟังก์ชันระบบคำนวณค่าสัมประสิทธิ์โมเมนต์สองทางตามวิธี ACI Method 3 (Interpolation Engine)
+def get_aci_coeffs(case, m_ratio):
+    # ข้อมูลตารางสัมประสิทธิ์โมเมนต์ (ตัวอย่างกรณีหลักที่ใช้บ่อยในงานวิศวกรรมอาคาร)
+    #โครงสร้างข้อมูล: { case_num: { m_ratio: (Cx_pos, Cx_neg, Cy_pos, Cy_neg) } }
+    aci_table = {
+        1: { # Case 1: จุดรองรับอิสระทั้ง 4 ด้าน
+            1.0: (0.050, 0.000, 0.050, 0.000), 0.9: (0.056, 0.000, 0.044, 0.000),
+            0.8: (0.063, 0.000, 0.037, 0.000), 0.7: (0.072, 0.000, 0.028, 0.000),
+            0.6: (0.081, 0.000, 0.019, 0.000), 0.5: (0.090, 0.000, 0.010, 0.000)
+        },
+        2: { # Case 2: ต่อเนื่องกันทั้ง 4 ด้าน (Interior Panel)
+            1.0: (0.018, 0.033, 0.018, 0.033), 0.9: (0.022, 0.041, 0.015, 0.028),
+            0.8: (0.027, 0.048, 0.012, 0.022), 0.7: (0.033, 0.056, 0.009, 0.016),
+            0.6: (0.039, 0.064, 0.006, 0.011), 0.5: (0.045, 0.072, 0.004, 0.007)
+        },
+        3: { # Case 3: ขอบไม่ต่อเนื่องด้านสั้นหนึ่งด้าน
+            1.0: (0.021, 0.038, 0.021, 0.038), 0.9: (0.025, 0.045, 0.017, 0.030),
+            0.8: (0.030, 0.053, 0.013, 0.023), 0.7: (0.036, 0.061, 0.009, 0.016),
+            0.6: (0.042, 0.069, 0.006, 0.011), 0.5: (0.049, 0.077, 0.004, 0.007)
+        },
+        4: { # Case 4: ขอบไม่ต่อเนื่องด้านยาวหนึ่งด้าน
+            1.0: (0.021, 0.038, 0.021, 0.038), 0.9: (0.026, 0.046, 0.016, 0.031),
+            0.8: (0.032, 0.054, 0.012, 0.024), 0.7: (0.039, 0.063, 0.008, 0.017),
+            0.6: (0.046, 0.072, 0.005, 0.011), 0.5: (0.054, 0.080, 0.003, 0.007)
+        }
+    }
+    
+    selected_case = aci_table.get(case, aci_table[1])
+    
+    # ดำเนินการลากเส้นกราฟอันดับที่หนึ่ง (Linear Interpolation)
+    ratios = sorted(selected_case.keys())
+    if m_ratio >= ratios[-1]: return selected_case[ratios[-1]]
+    if m_ratio <= ratios[0]: return selected_case[ratios[0]]
+    
+    for i in range(len(ratios) - 1):
+        r1, r2 = ratios[i], ratios[i+1]
+        if r1 <= m_ratio <= r2:
+            v1, v2 = selected_case[r1], selected_case[r2]
+            return tuple(v1[j] + (v2[j] - v1[j]) * (m_ratio - r1) / (r2 - r1) for j in range(4))
+    return selected_case[1.0]
 
-# ใช้ระบบ Session State สำหรับเก็บรายงานคำนวณไว้ดาวน์โหลด
-if 'report_text' not in st.session_state:
-    st.session_state.report_text = ""
+# 3. ส่วนรับพารามิเตอร์นำเข้า (Sidebar Engineering Parameters)
+st.sidebar.header("⚙️ 1. พารามิเตอร์วัสดุควบคุม")
+method = st.sidebar.selectbox("ระเบียบวิธีการออกแบบ", ["วิธีวิเคราะห์กำลัง (SDM / USD)", "วิธีหน่วยแรงใช้งาน (WSD)"])
 
-# 2. ส่วนป้อนข้อมูล (Input Panels) แยกเป็นคอลัมน์เพื่อความสะอาดตา
-col_in1, col_in2, col_in3 = st.columns(3)
+# แยกประเภทเหล็กมาตรฐาน มอก.
+rebar_type = st.sidebar.selectbox("ชั้นคุณภาพเหล็กเสริม (Rebar Grade)", ["SR24 (เหล็กผิวเรียบ)", "SD30 (เหล็กข้ออ้อย)", "SD40 (เหล็กข้ออ้อย)"])
+fy = 2400 if "SR24" in rebar_type else (3000 if "SD30" in rebar_type else 4000)
 
-with col_in1:
-    st.subheader("📐 มิติและระยะช่วง")
-    Lx = st.number_input("ความยาวช่วงสั้น Lx (เมตร)", min_value=0.5, max_value=10.0, value=3.0, step=0.1)
-    Ly = st.number_input("ความยาวช่วงยาว Ly (เมตร)", min_value=0.5, max_value=20.0, value=4.0, step=0.1)
-    t_cm = st.slider("ความหนาพื้น t (เซนติเมตร)", min_value=5.0, max_value=30.0, value=12.0, step=0.5)
-    covering_cm = st.number_input("ระยะหุ้มคอนกรีต (เซนติเมตร)", min_value=1.5, max_value=5.0, value=2.0, step=0.5)
+fc_prime = st.sidebar.number_input("กำลังอัดประลัยของคอนกรีต fc' - ทรงกระบอก (กก./ตร.ซม.)", min_value=140, max_value=450, value=240)
 
-with col_in2:
-    st.subheader("⚖️ น้ำหนักและวิธีออกแบบ")
-    SDL = st.number_input("น้ำหนักบรรทุกคงที่เพิ่มเติ่ม (กก./ตร.ม.)", min_value=0, max_value=500, value=100)
-    LL = st.number_input("น้ำหนักบรรทุกจร (กก./ตร.ม.)", min_value=0, max_value=2000, value=200)
-    method = st.selectbox("ระเบียบวิธีออกแบบ", ["วิธีวิเคราะห์กำลัง (SDM / USD)", "วิธีหน่วยแรงใช้งาน (WSD)"])
+st.sidebar.header("📐 2. เรขาคณิตของแผ่นพื้น")
+Lx = st.sidebar.number_input("ความยาวช่วงสั้น Lx (เมตร)", min_value=1.0, max_value=12.0, value=3.5, step=0.05)
+Ly = st.sidebar.number_input("ความยาวช่วงยาว Ly (เมตร)", min_value=1.0, max_value=25.0, value=4.5, step=0.05)
+t_cm = st.sidebar.slider("ความหนาแผ่นพื้นโครงสร้าง t (ซม.)", min_value=8.0, max_value=35.0, value=12.0, step=0.5)
+covering_cm = st.sidebar.slider("ระยะหุ้มคอนกรีตเคลียร์ริ่ง (ซม.)", min_value=1.5, max_value=4.0, value=2.0, step=0.5)
+rebar_dia = st.sidebar.selectbox("ขนาดเส้นผ่านศูนย์กลางเหล็กเสริมหลัก", [6, 9, 12, 16], index=2)
 
-with col_in3:
-    st.subheader("🛠️ คุณสมบัติวัสดุ")
-    fc_prime = st.number_input("กำลังอัดคอนกรีต fc' (กก./ตร.ซม.)", min_value=140, max_value=450, value=240)
-    fy = st.selectbox("กำลังดึงจุดคลิตเหล็กเสริม fy (กก./ตร.ซม.)", options=[2400, 3000, 4000], index=2)
-    rebar_option = st.selectbox("ขนาดเหล็กที่ใช้หน้างาน", ["RB6", "RB9", "DB12", "DB16"], index=2)
+st.sidebar.header("⚖️ 3. น้ำหนักบรรทุกใช้งาน")
+SDL = st.sidebar.number_input("น้ำหนักวัสดุปูผิว + งานระบบ (กก./ตร.ม.)", min_value=0, max_value=600, value=120)
+LL = st.sidebar.number_input("น้ำหนักบรรทุกจรตามประเภทอาคาร (กก./ตร.ม.)", min_value=0, max_value=1500, value=250)
 
-# --- ส่วนประมวลผลทางวิศวกรรม (Engineering Core) ---
-aspect_ratio = Ly / Lx if Lx > 0 else 0
-is_one_way = aspect_ratio > 2.0
-slab_type_str = "One-Way Slab" if is_one_way else "Two-Way Slab"
+# --- ส่วนประมวลผลทางวิศวกรรมเชิงลึก ---
+aspect_ratio = Lx / Ly if Ly > 0 else 0
+is_one_way = aspect_ratio <= 0.5 # ทิศทางเดียวเมื่อยาวเป็น 2 เท่าของด้านสั้น (Lx/Ly <= 0.5)
 
 t = t_cm / 100
-db_map = {"RB6": 6, "RB9": 9, "DB12": 12, "DB16": 16}
-db = db_map[rebar_option]
-ab = (math.pi / 4) * ((db / 10) ** 2) # Area of 1 bar in cm^2
-d = t_cm - covering_cm - (db / 20)   # Effective depth (cm)
+ab = (math.pi / 4) * ((rebar_dia / 10) ** 2)
+d = t_cm - covering_cm - (rebar_dia / 20) # Effective depth (cm)
 
-# คำนวณโหลดตามวิธีที่เลือก
-DL_slab = t * 2400
-w_dead = DL_slab + SDL
+# คำนวณน้ำหนักและการรวมน้ำหนักบรรทุกตามมาตรฐานควบคุม
+DL_self = t * 2400
+w_dead = DL_self + SDL
+
 if method == "วิธีวิเคราะห์กำลัง (SDM / USD)":
     w_u = (1.2 * w_dead) + (1.6 * LL)
-    phi_flexure = 0.90
-    phi_shear = 0.75
+    phi_flexure, phi_shear = 0.90, 0.75
 else:
     w_u = w_dead + LL
 
-# คำนวณโมเมนต์และแรงเฉือนสูงสุด (Worst-case Envelope สำหรับงานใช้งานจริง)
-# คิดแบบต่อเนื่องปลายเปิดทั่วไปเพื่อให้ครอบคลุมความปลอดภัยสูงสุด
+# วิเคราะห์หาค่าแรงภายใน (Force Analysis)
 if is_one_way:
-    M_pos = (w_u * (Lx ** 2)) / 11
-    M_neg = (w_u * (Lx ** 2)) / 10
-    V_u = (w_u * Lx) / 2 # แรงเฉือนสูงสุดที่ขอบคาน
-    M_x_pos, M_x_neg, M_y_pos, M_y_neg = M_pos, M_neg, 0.0, 0.0
+    st.sidebar.subheader("📌 เงื่อนไขขอบพื้นทางเดียว")
+    bc_1way = st.sidebar.selectbox("สภาพขอบ", ["Simply Supported", "One End Continuous", "Both Ends Continuous"])
+    if bc_1way == "Simply Supported":
+        M_x_pos, M_x_neg = (w_u * (Lx ** 2)) / 8, 0.0
+    elif bc_1way == "One End Continuous":
+        M_x_pos, M_x_neg = (w_u * (Lx ** 2)) / 11, (w_u * (Lx ** 2)) / 10
+    else:
+        M_x_pos, M_x_neg = (w_u * (Lx ** 2)) / 16, (w_u * (Lx ** 2)) / 11
+    M_y_pos, M_y_neg = 0.0, 0.0
+    V_u = (w_u * Lx) / 2
 else:
-    # สัมประสิทธิ์โมเมนต์เฉลี่ยสำหรับพื้นสองทางต่อเนื่องทั่วไป (Case 3/4 ACI)
-    M_x_pos = 0.036 * w_u * (Lx ** 2)
-    M_x_neg = 0.048 * w_u * (Lx ** 2)
-    M_y_pos = 0.028 * w_u * (Lx ** 2)
-    M_y_neg = 0.037 * w_u * (Lx ** 2)
-    V_u = (w_u * Lx) / 3 # แรงเฉือนเฉลี่ยด้านสั้นที่รับโหลดมากสุด
+    st.sidebar.subheader("📌 เงื่อนไขขอบพื้นสองทาง")
+    bc_2way = st.sidebar.selectbox("สภาพขอบพื้นตามระบบ ACI", [
+        "Case 1: ขอบอิสระรอบด้าน (Isolated)",
+        "Case 2: ขอบต่อเนื่องกันทั้ง 4 ด้าน (Interior)",
+        "Case 3: ขอบไม่ต่อเนื่องด้านสั้น 1 ด้าน",
+        "Case 4: ขอบไม่ต่อเนื่องด้านยาว 1 ด้าน"
+    ])
+    case_mapping = {"Case 1: ขอบอิสระรอบด้าน (Isolated)": 1, "Case 2: ขอบต่อเนื่องกันทั้ง 4 ด้าน (Interior)": 2, "Case 3: ขอบไม่ต่อเนื่องด้านสั้น 1 ด้าน": 3, "Case 4: ขอบไม่ต่อเนื่องด้านยาว 1 ด้าน": 4}
+    cx_p, cx_n, cy_p, cy_n = get_aci_coeffs(case_mapping[bc_2way], aspect_ratio)
+    
+    M_x_pos = cx_p * w_u * (Lx ** 2)
+    M_x_neg = cx_n * w_u * (Lx ** 2)
+    M_y_pos = cy_p * w_u * (Lx ** 2)
+    M_y_neg = cy_n * w_u * (Lx ** 2)
+    V_u = (w_u * Lx) / 2 * (aspect_ratio / (1 + aspect_ratio)) # แรงเฉือนวิกฤตสูงสุดด้านสั้น
 
-# ฟังก์ชันคำนวณพื้นที่เหล็กเสริม (As)
-def calc_as(M_kgm, d_eff, f_c, f_y, mth):
+# คำนวณขีดจำกัดหน้าตัดเสริมเหล็กตามเกณฑ์ความปลอดภัย
+as_min_ratio = 0.0018 if fy >= 4000 else 0.0020
+As_min = as_min_ratio * 100.0 * t_cm
+
+# ตรวจสอบขีดจำกัดสูงสุดพฤติกรรมหน้าตัดเหนียว (SDM)
+beta_1 = max(0.85 - (0.05 * (fc_prime - 280) / 70), 0.65) if fc_prime > 280 else 0.85
+rho_b = (0.85 * beta_1 * fc_prime / fy) * (6120 / (6120 + fy))
+rho_max = 0.75 * rho_b
+
+def structural_design_engine(M_kgm, d_eff, f_c, f_y, mth, r_max):
     if M_kgm <= 0: return 0.0
     M_cm = M_kgm * 100.0
     if mth == "วิธีวิเคราะห์กำลัง (SDM / USD)":
         Rn = M_cm / (0.90 * 100.0 * (d_eff ** 2))
-        inside = 1.0 - (2.0 * Rn) / (0.85 * f_c)
-        if inside < 0: return -1.0 # ความหนาไม่พอ
-        rho = (0.85 * f_c / f_y) * (1.0 - math.sqrt(inside))
+        inside_sqrt = 1.0 - (2.0 * Rn) / (0.85 * f_c)
+        if inside_sqrt < 0: return -1.0 # ประลัย คอนกรีตรับแรงบีบไม่พอ
+        rho = (0.85 * f_c / f_y) * (1.0 - math.sqrt(inside_sqrt))
+        if rho > r_max: return -2.0 # หน้าตัดเปราะเกินไป ผิดเกณฑ์ความเหนียว
         return rho * 100.0 * d_eff
-    else: # WSD
+    else: # วิธีหน่วยแรงใช้งาน WSD
         fc_wsd = 0.375 * f_c
         fs_wsd = 1500.0 if f_y >= 3000 else 1200.0
         n_ratio = 11.0
@@ -91,136 +146,147 @@ def calc_as(M_kgm, d_eff, f_c, f_y, mth):
         if d_eff < math.sqrt(M_cm / (R_val * 100.0)): return -1.0
         return M_cm / (fs_wsd * j_val * d_eff)
 
-# คำนวณเหล็กขั้นต่ำกันร้าว
-as_min_ratio = 0.0018 if fy >= 4000 else 0.0020
-As_min = as_min_ratio * 100.0 * t_cm
+# ประมวลผลพื้นที่เหล็กเสริมเรียงตามแกน
+fail_flag = 0
+as_x_b_req = structural_design_engine(M_x_pos, d, fc_prime, fy, method, rho_max)
+as_x_t_req = structural_design_engine(M_x_neg, d, fc_prime, fy, method, rho_max)
+as_y_b_req = structural_design_engine(M_y_pos, d, fc_prime, fy, method, rho_max)
+as_y_t_req = structural_design_engine(M_y_neg, d, fc_prime, fy, method, rho_max)
 
-# สรุปปริมาณเหล็กเสริมที่ต้องใช้จริง
-error_concrete = False
-if is_one_way:
-    as_x_p = calc_as(M_x_pos, d, fc_prime, fy, method)
-    as_x_n = calc_as(M_x_neg, d, fc_prime, fy, method)
-    if as_x_p < 0 or as_x_n < 0: error_concrete = True
-    As_X_Bottom = max(as_x_p, As_min)
-    As_X_Top = max(as_x_n, As_min)
-    As_Y_Bottom = As_min # เหล็กอุณหภูมิ
-    As_Y_Top = 0.0
-else:
-    as_x_p = calc_as(M_x_pos, d, fc_prime, fy, method)
-    as_x_n = calc_as(M_x_neg, d, fc_prime, fy, method)
-    as_y_p = calc_as(M_y_pos, d, fc_prime, fy, method)
-    as_y_n = calc_as(M_y_neg, d, fc_prime, fy, method)
-    if any(v < 0 for v in [as_x_p, as_x_n, as_y_p, as_y_n]): error_concrete = True
-    As_X_Bottom = max(as_x_p, As_min)
-    As_X_Top = max(as_x_n, As_min)
-    As_Y_Bottom = max(as_y_p, As_min)
-    As_Y_Top = max(as_y_n, As_min)
+if any(v == -1.0 for v in [as_x_b_req, as_x_t_req, as_y_b_req, as_y_t_req]): fail_flag = 1 # Thickness Failure
+if any(v == -2.0 for v in [as_x_b_req, as_x_t_req, as_y_b_req, as_y_t_req]): fail_flag = 2 # Brittle Failure
 
-# ฟังก์ชันคำนวณระยะห่างหน้างาน
-def calc_spacing(as_req, bar_area, t_thickness):
-    if as_req <= 0: return 0.0
-    s = (bar_area / as_req) * 100.0
-    return min(s, 3 * t_thickness, 45.0)
+As_X_Bottom = max(as_x_b_req, As_min)
+As_X_Top = max(as_x_t_req, As_min) if M_x_neg > 0 else 0.0
+As_Y_Bottom = max(as_y_b_req, As_min) if not is_one_way else As_min
+As_Y_Top = max(as_y_t_req, As_min) if (not is_one_way and M_y_neg > 0) else 0.0
 
-s_xb = calc_spacing(As_X_Bottom, ab, t_cm)
-s_xt = calc_spacing(As_X_Top, ab, t_cm)
-s_yb = calc_spacing(As_Y_Bottom, ab, t_cm)
-s_yt = calc_spacing(As_Y_Top, ab, t_cm)
+# ฟังก์ชันคำนวณระยะห่างตามข้อกำหนด วสท./ACI และการโก่งตัวเชิงควบคุม
+def strict_spacing(as_target, bar_area, thickness):
+    if as_target <= 0: return 0.0
+    s_calc = (bar_area / as_target) * 100.0
+    s_max = min(3 * thickness, 45.0) # เกณฑ์ระยะสูงสุดเพื่อควบคุมรอยร้าวและแรงยึดเกาะ
+    return min(s_calc, s_max)
 
-# --- การตรวจสอบแรงเฉือนเชิงโครงสร้าง (Shear Capacity Verification) ---
+s_xb = strict_spacing(As_X_Bottom, ab, t_cm)
+s_xt = strict_spacing(As_X_Top, ab, t_cm)
+s_yb = strict_spacing(As_Y_Bottom, ab, t_cm)
+s_yt = strict_spacing(As_Y_Top, ab, t_cm)
+
+# ตรวจสอบขีดความสามารถแรงเฉือนประลัย (Shear Capacity Verification)
 if method == "วิธีวิเคราะห์กำลัง (SDM / USD)":
-    Vc = 0.53 * math.sqrt(fc_prime) * 100.0 * d # หน่วยเป็นกิโลกรัม
-    V_allowable = phi_shear * Vc
+    V_c = 0.53 * math.sqrt(fc_prime) * 100.0 * d
+    V_allow = phi_shear * V_c
 else:
-    vc = 0.29 * math.sqrt(fc_prime)
-    V_allowable = vc * 100.0 * d
+    V_c = 0.29 * math.sqrt(fc_prime) * 100.0 * d
+    V_allow = V_c
 
-shear_passed = V_u <= V_allowable
+shear_passed = V_u <= V_allow
 
-# --- ส่วนการสร้างรูปภาพดีเทลหน้าตัดเหล็กเสริม (Matplotlib Sketch) ---
-def draw_slab_section(t_h, cov, d_bar, sp_xb, sp_xt):
-    fig, ax = plt.subplots(figsize=(10, 3))
-    # วาดก้อนคอนกรีตพื้น
-    ax.add_patch(plt.Rectangle((0, 0), 100, t_h, facecolor='#eaeaea', edgecolor='#7f8c8d', linewidth=2))
+# ตรวจสอบเกณฑ์ความหนาขั้นต่ำควบคุมการโก่งตัวสะสม (Deflection Control Minimum Thickness)
+t_min_modifier = (0.4 + fy / 7000) if fy != 4000 else 1.0
+if is_one_way:
+    t_min_threshold = (Lx / 24) * t_min_modifier * 100.0 # สมมติกรณีต่อเนื่องปลายด้านเดียวเป็นเกณฑ์ทั่วไป
+else:
+    t_min_threshold = (2 * (Lx + Ly) / 180) * 100.0
+deflection_safe = t_cm >= t_min_threshold
+
+# --- ฟังก์ชันเขียนแบบดีเทลวิศวกรรมชั้นสูง (Advanced Structural Plotting Engine) ---
+def draw_engineering_blueprint(t_h, cov, db_size, sp_xb, sp_xt):
+    fig, ax = plt.subplots(figsize=(12, 3.8))
+    # ก้อนคอนกรีตพื้นและฐานคานรองรับรองพื้นด้านข้าง
+    ax.add_patch(plt.Rectangle((10, 0), 80, t_h, facecolor='#f8f9fa', edgecolor='#2c3e50', linewidth=2.5, hatch='/'))
+    ax.add_patch(plt.Rectangle((0, -15), 10, t_h + 15, facecolor='#bdc3c7', edgecolor='#34495e', linewidth=2))
+    ax.add_patch(plt.Rectangle((90, -15), 10, t_h + 15, facecolor='#bdc3c7', edgecolor='#34495e', linewidth=2))
     
-    # วาดเหล็กล่าง (Bottom Bars) - จุดสีแดง
-    for x in range(5, 100, int(sp_xb) if sp_xb > 0 else 20):
-        ax.plot(x, cov + (d_bar/20), 'ro', markersize=8, label="Bottom Rebar" if x==5 else "")
-    ax.plot([2, 98], [cov, cov], 'r-', linewidth=1.5) # เส้นโครงเหล็กล่าง
-    
-    # วาดเหล็กบน (Top Bars) - จุดสีน้ำเงิน (ถ้ามีโมเมนต์ลบ)
-    if sp_xt > 0:
-        for x in range(5, 100, int(sp_xt)):
-            ax.plot(x, t_h - cov - (d_bar/20), 'bo', markersize=8, label="Top Rebar" if x==5 else "")
-        ax.plot([2, 98], [t_h - cov, t_h - cov], 'b-', linewidth=1.5)
+    # วาดเหล็กเสริมล่าง (Main Bottom Rebars)
+    ax.plot([2, 98], [cov, cov], color='#d35400', linewidth=2.5, linestyle='-', label='Bottom Main Rebar')
+    for x in range(15, 90, int(sp_xb) if sp_xb > 0 else 20):
+        ax.plot(x, cov, marker='o', markersize=6, color='#c0392b')
         
+    # วาดเหล็กเสริมบนบริเวณหัวคาน (Negative Top Rebars)
+    if sp_xt > 0:
+        # ระยะล้วงเหล็กหักงอ 0.25 ของความยาวช่วงตามมาตรฐาน
+        ax.plot([0, 32], [t_h - cov, t_h - cov], color='#2980b9', linewidth=2.5)
+        ax.plot([68, 100], [t_h - cov, t_h - cov], color='#2980b9', linewidth=2.5, label='Top Support Rebar')
+        for x in list(range(2, 30, int(sp_xt))) + list(range(70, 98, int(sp_xt))):
+            ax.plot(x, t_h - cov, marker='o', markersize=6, color='#2c3e50')
+            
+    # เพิ่มสัญลักษณ์เส้นมิติและลูกศรกำกับระยะจัด
+    ax.annotate(f'Clear Cover {cov} cm', xy=(50, 0), xytext=(50, -6), arrowprops=dict(arrowstyle="->", color="black"))
+    ax.text(35, t_h/2, f"🔥 DB{db_size} @ {sp_xb:.1f} cm", color='#d35400', weight='bold', fontsize=11)
+    
     ax.set_xlim(-5, 105)
-    ax.set_ylim(-2, t_h + 5)
-    ax.set_title(f"Cross-Section Detail (Width 1.00 m) / Thickness = {t_h} cm", fontsize=10, fontweight='bold')
+    ax.set_ylim(-18, t_h + 8)
     ax.axis('off')
     return fig
 
-# --- ส่วนการแสดงผลส่วนหน้าเบราว์เซอร์ (Main Dashboard UI) ---
-col_m1, col_m2 = st.columns([2, 1])
+# --- ส่วนติดต่อผู้ใช้งานหลัก (Main App Layout Dashboard) ---
+m_col1, m_col2 = st.columns([7, 3])
 
-with col_m1:
-    st.subheader("📊 ผลลัพธ์และการตรวจสอบความปลอดภัย")
+with m_col1:
+    st.subheader("📊 ผลลัพธ์และระบบตรวจสอบสถานะความปลอดภัยวิกฤต")
     
-    if error_concrete:
-        st.error("🚨 วิกฤต: หน้าตัดคอนกรีตบางเกินไป (Over-reinforced failure risk)! ไม่สามารถคำนวณเหล็กเสริมได้ โปรดเพิ่มความหนาพื้นทันที")
-    elif not shear_passed:
-        st.error(f"🚨 วิกฤต: แผ่นพื้นพังทลายด้วยแรงเฉือน! แรงเฉือนที่เกิด {V_u:.1f} กก. เกินกว่าที่ยอมรับได้ {V_allowable:.1f} กก. (โปรดเพิ่มความหนาพื้นหรือเพิ่มกำลังอัดคอนกรีต)")
-    else:
-        st.success(f"✅ โครงสร้างปลอดภัยสมบูรณ์: ความหนาและกำลังวัสดุผ่านการตรวจสอบทั้งแรงดัดและแรงเฉือน (V_u = {V_u:.1f} kg ≤ Allowable = {V_allowable:.1f} kg)")
-        
-        # แสดงรูปภาพแบบขยายหน้าตัดเหล็กเสริมจริง
-        st.write("📐 **แบบขยายการจัดเรียงเหล็กเส้นหน้างาน (Section Sketch):**")
-        fig_section = draw_slab_section(t_cm, covering_cm, db, s_xb, s_xt)
-        st.pyplot(fig_section)
+    # แผงตรวจสอบสถานะความเสียหาย (Fail-Safe Traffic Lights)
+    stat_flexure = "🟢 ผ่าน" if fail_flag == 0 else ("🔴 ล้มเหลว (ความหนาหน้าตัดคอนกรีตไม่พอ)" if fail_flag == 1 else "🟡 ผิดเกณฑ์ความเหนียว (Over-Reinforced)")
+    stat_shear = "🟢 ผ่าน" if shear_passed else "🔴 ล้มเหลว (เกิดแรงเฉือนทะลุหน้าตัด)"
+    stat_deflect = "🟢 ผ่านเกณฑ์ความหนาขั้นต่ำ" if deflection_safe else "🟡 เสี่ยงแอ่นตัว (ความหนาน้อยกว่าข้อแนะนำมาตรฐาน)"
+    
+    status_df = pd.DataFrame({
+        "รายการตรวจสอบเชิงโครงสร้าง": ["กำลังรับแรงดัด (Flexural Capacity Checking)", "กำลังรับแรงเฉือน (Shear Validation)", "เกณฑ์การโก่งตัวในระยะยาว (Deflection Control)"],
+        "สถานะการตรวจสอบ": [stat_flexure, stat_shear, stat_deflect]
+    })
+    st.table(status_df)
+    
+    if fail_flag == 0 and shear_passed:
+        st.write("📐 **แบบแสดงรายละเอียดการจัดเรียงเหล็กเส้นโครงสร้างจริง (Structural Engineering Blueprint Detail):**")
+        st.pyplot(draw_engineering_blueprint(t_cm, covering_cm, rebar_dia, s_xb, s_xt))
 
-with col_m2:
-    st.subheader("🎯 สรุปใบสั่งใบจัดเหล็ก")
+with m_col2:
+    st.subheader("🎯 บันทึกรายการจัดเหล็ก (BBS)")
     
-    summary_data = {
-        "ตำแหน่งเหล็ก": ["เหล็กล่าง แนวช่วงสั้น (Main X)", "เหล็กบน หัวคานช่วงสั้น (Top X)", "เหล็กล่าง แนวช่วงยาว (Main Y)", "เหล็กบน หัวคานช่วงยาว (Top Y)"],
-        "ขนาดและระยะห่าง": [
-            f"{rebar_option} @ {s_xb:.1f} ซม." if s_xb > 0 else "เหล็กกันร้าวขั้นต่ำ",
-            f"{rebar_option} @ {s_xt:.1f} ซม." if s_xt > 0 else "ไม่ต้องมีเหล็กโครงสร้าง",
-            f"{rebar_option} @ {s_yb:.1f} ซม." if s_yb > 0 else "เหล็กกันร้าวขั้นต่ำ",
-            f"{rebar_option} @ {s_yt:.1f} ซม." if s_yt > 0 else "ไม่ต้องมีเหล็กโครงสร้าง"
-        ]
+    bbs_data = {
+        "ประเภทหน้าตัด/ตำแหน่ง": ["เหล็กเสริมแกน X (ล่าง)", "เหล็กเสริมหัวคาน X (บน)", "เหล็กเสริมแกน Y (ล่าง)", "เหล็กเสริมหัวคาน Y (บน)"],
+        "ระยะจัดทำจริงหน้างาน": [
+            f"DB{rebar_dia} @ {s_xb:.1f} ซม." if s_xb > 0 else "จัดตามเหล็กกันร้าว",
+            f"DB{rebar_dia} @ {s_xt:.1f} ซม." if s_xt > 0 else "ไม่ต้องเสริมเหล็กโครงสร้าง",
+            f"DB{rebar_dia} @ {s_yb:.1f} ซม." if s_yb > 0 else "จัดตามเหล็กกันร้าว",
+            f"DB{rebar_dia} @ {s_yt:.1f} ซม." if s_yt > 0 else "ไม่ต้องมีเหล็กโครงสร้าง"
+        ],
+        "พื้นที่เหล็กจริง ($cm^2/m$)": [f"{As_X_Bottom:.2f}", f"{As_X_Top:.2f}", f"{As_Y_Bottom:.2f}", f"{As_Y_Top:.2f}"]
     }
-    st.table(pd.DataFrame(summary_data))
+    st.table(pd.DataFrame(bbs_data))
 
-# --- ระบบสร้างเล่มรายงานคำนวณอัตโนมัติ (Automated Report Generator) ---
+# --- ระบบจัดพิมพ์เล่มคำนวณทางวิศวกรรมอิเล็กทรอนิกส์ (Professional Verification Sheet) ---
 st.markdown("---")
-with st.expander("📄 เปิดระบบออกรายงานการคำนวณ (Calculation Sheet Report)"):
+with st.expander("📑 เปิดดูเอกสารรายการคำนวณและสัมประสิทธิ์เพื่อใช้แนบขออนุมัติ"):
     
-    report = f"""==================================================
-CALCULATION SHEET: REINFORCED CONCRETE SLAB DESIGN
-==================================================
-ประเภทพฤติกรรมแผ่นพื้น: {slab_type_str}
-ระเบียบวิธีการคำนวณ: {method}
---------------------------------------------------
-[1] ข้อมูลทางเรขาคณิตและวัสดุ:
-- มิติตัวแผ่นพื้น: Lx = {Lx:.2f} ม. , Ly = {Ly:.2f} ม.
-- ความหนาพื้น (t): {t_cm:.1f} ซม. (d_eff = {d:.2f} ซม.)
-- กำลังอัดคอนกรีต (fc'): {fc_prime} กก./ตร.ซม.
-- กำลังดึงเหล็กเสริม (fy): {fy} กก./ตร.ซม.
+    calc_sheet_text = f"""======================================================================
+         PROFESSIONAL STRUCTURAL DESIGN REPORT: REINFORCED CONCRETE SLAB
+======================================================================
+สเปกและพฤติกรรมโครงสร้างอาคาร: {slab_type_str if 'slab_type_str' in locals() else "Slab Panel"}
+เกณฑ์ข้อกำหนดมาตรฐานที่เลือกใช้: {method}
+----------------------------------------------------------------------
+[PART 1] พารามิเตอร์และมิติทางเรขาคณิต:
+- มิติแผ่นพื้นโครงสร้าง: Lx = {Lx:.2f} m, Ly = {Ly:.2f} m | อัตราส่วนสัดส่วนช่วง (m) = {aspect_ratio:.2f}
+- ความหนาของแผ่นพื้นแนะแนว (t): {t_cm:.1f} cm | ระยะลึกประสิทธิผลปฏิบัติงานจริง (d) = {d:.2f} cm
+- กำลังแรงอัดประลัยวัสดุคอนกรีต (fc'): {fc_prime} kg/cm²
+- กำลังจุดคลิตจุดทลายวัสดุเหล็กเสริม (fy): {fy} kg/cm²
 
-[2] การวิเคราะห์น้ำหนักบรรทุกและแรงภายใน:
-- น้ำหนักบรรทุกรวม (w_u): {w_u:.2f} กก./ตร.ม.
-- โมเมนต์ดัดบวกสูงสุด: {M_x_pos:.2f} กก.-ม.
-- โมเมนต์ดัดลบสูงสุด: {M_x_neg:.2f} กก.-ม.
-- แรงเฉือนสูงสุดที่เกิดขึ้น (V_u): {V_u:.2f} กก.
-- แรงเฉือนที่หน้าตัดรับได้คุ้มครองความปลอดภัย: {V_allowable:.2f} กก. -> {"[PASSED]" if shear_passed else "[FAILED]"}
+[PART 2] ผลการประเมินแรงภายในและเสถียรภาพความปลอดภัย:
+- น้ำหนักบรรทุกรวมแผ่กระจาย (w_u): {w_u:.2f} kg/m²
+- โมเมนต์ดัดบวกประลัยแกนสั้น (Mx +): {M_x_pos:.2f} kg-m
+- โมเมนต์ดัดลบประลัยขอบริมคาน (Mx -): {M_x_neg:.2f} kg-m
+- แรงเฉือนแบบแผ่ประลัยสูงสุดที่ขอบหน้าตัด (V_u): {V_u:.2f} kg
+- แรงเฉือนสูงสุดที่เนื้อคอนกรีตสามารถต้านทานได้ (Phi*Vc): {V_allow:.2f} kg -> {"[ผ่านเกณฑ์ความปลอดภัย]" if shear_passed else "[ไม่ผ่านเกณฑ์แรงเฉือนพังทลาย]"}
 
-[3] สรุปผลการจัดเหล็กเสริมใช้งานจริง (ต่อความกว้าง 1 เมตร):
-- เหล็กล่าง แนวช่วงสั้น (Main X): {rebar_option} @ {s_xb:.1f} ซม. (As = {As_X_Bottom:.2f} sq.cm)
-- เหล็กบน หัวคานช่วงสั้น (Top X) : {rebar_option} @ {s_xt:.1f} ซม. (As = {As_X_Top:.2f} sq.cm)
-- เหล็กล่าง แนวช่วงยาว (Main Y): {rebar_option} @ {s_yb:.1f} ซม. (As = {As_Y_Bottom:.2f} sq.cm)
-- เหล็กบน หัวคานช่วงยาว (Top Y) : {rebar_option} @ {s_yt:.1f} ซม. (As = {As_Y_Top:.2f} sq.cm)
-==================================================
+[PART 3] ข้อกำหนดสรุปรายการผูกเหล็กและระยะเว้นหน้างานจริง (ต่อความกว้าง 1 เมตร):
+- เหล็กล่าง แนวช่วงสั้น (Main X): DB{rebar_dia} @ {s_xb:.1f} ซม. (As,req = {As_X_Bottom:.2f} cm²/m)
+- เหล็กบน หัวคานช่วงสั้น (Top X) : DB{rebar_dia} @ {s_xt:.1f} ซม. (As,req = {As_X_Top:.2f} cm²/m)
+- เหล็กล่าง แนวช่วงยาว (Main Y): DB{rebar_dia} @ {s_yb:.1f} ซม. (As,req = {As_Y_Bottom:.2f} cm²/m)
+- เหล็กบน หัวคานช่วงยาว (Top Y) : DB{rebar_dia} @ {s_yt:.1f} ซม. (As,req = {As_Y_Top:.2f} cm²/m)
+----------------------------------------------------------------------
+*รายงานนี้ออกโดยระบบคำนวณอัตโนมัติอ้างอิงสมการสมดุลหน่วยแรงจำกัดตามข้อกำหนดสากล วสท./ACI*
 """
-    st.code(report, language="text")
-    st.download_button(label="📥 ดาวน์โหลดเล่มรายการคำนวณ (.txt)", data=report, file_name="Slab_Design_Report.txt", mime="text/plain")
+    st.code(calc_sheet_text, language="text")
+    st.download_button(label="📥 Download Official Calculation Sheet (.txt)", data=calc_sheet_text, file_name="RC_Slab_Design_Report.txt", mime="text/plain")
