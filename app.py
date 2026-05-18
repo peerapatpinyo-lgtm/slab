@@ -3,15 +3,18 @@ import math
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 1. Page Configuration
+# ==========================================
+# 1. PAGE CONFIGURATION & APP TITLE
+# ==========================================
 st.set_page_config(page_title="SlabMaster Pro V2 - Structural Suite", layout="wide")
 st.title("🦅 SlabMaster Pro V2 (Full ACI 9-Case & EUDL Engine)")
 st.caption("Commercial-Grade Reinforced Concrete Two-Way Slab Design Software | Fully Compliant with ACI 318-99 Method 3")
 
-# 2. Comprehensive ACI Method 3 Database (All 9 Boundary Condition Cases)
+# ==========================================
+# 2. COMPREHENSIVE ACI METHOD 3 DATABASE
+# ==========================================
 def get_full_aci_method3_coeffs(case_num, m_ratio):
-    # Coefficients: (Cx_neg, Cx_pos_dl, Cx_pos_ll, Cy_neg, Cy_pos_dl, Cy_pos_ll)
-    # Ratios mapped from 0.5 to 1.0
+    # Coefficients structure: (Cx_neg, Cx_pos_dl, Cx_pos_ll, Cy_neg, Cy_pos_dl, Cy_pos_ll)
     aci_database = {
         1: { # Case 1: Interior Panel (Fully Continuous on all 4 edges)
             1.0: (0.033, 0.015, 0.018, 0.033, 0.015, 0.018),
@@ -101,7 +104,9 @@ def get_full_aci_method3_coeffs(case_num, m_ratio):
             return tuple(v1[j] + (v2[j] - v1[j]) * (m_ratio - r1) / (r2 - r1) for j in range(6))
     return selected_case[1.0]
 
-# 3. Sidebar Geometry & Materials Configuration
+# ==========================================
+# 3. SIDEBAR INTERFACE & PARAMETERS
+# ==========================================
 st.sidebar.header("📐 Slab Boundary & Geometry")
 case_idx = st.sidebar.selectbox("ACI Boundary Condition Case", [
     "Case 1: Fully Continuous (Interior Panel)",
@@ -126,7 +131,6 @@ method = st.sidebar.selectbox("Design Framework", ["Strength Design Method (SDM 
 fc_prime = st.sidebar.number_input("Concrete Strength fc' (kg/cm²)", min_value=140, max_value=450, value=280)
 fy = st.sidebar.selectbox("Rebar Yield strength fy (kg/cm²)", [2400, 3000, 4000], index=2)
 
-# 4. Advanced EUDL Input Module (Line and Point Loads Transformation)
 st.sidebar.header("⚖️ Complex Loading System")
 UDL_SDL = st.sidebar.number_input("Uniform SDL (Floor Finish/Ceiling) (kg/m²)", min_value=0, max_value=500, value=120)
 UDL_LL = st.sidebar.number_input("Uniform Live Load (Occupancy) (kg/m²)", min_value=0, max_value=1500, value=250)
@@ -140,22 +144,24 @@ st.sidebar.subheader("📍 Concentrated Heavy Point Loads")
 point_load_p = st.sidebar.number_input("Heavy Equipment Point Load (kg)", min_value=0.0, max_value=5000.0, value=500.0)
 point_load_count = st.sidebar.number_input("Number of Point Loads", min_value=0, max_value=10, value=1)
 
-# --- Core Engineering Calculations ---
+st.sidebar.header("💰 Cost Estimation Parameters")
+unit_concrete_cost = st.sidebar.number_input("Concrete Price (per m³)", value=2200)
+unit_steel_cost = st.sidebar.number_input("Steel Price (per kg)", value=28)
+
+# ==========================================
+# 4. CORE ENGINEERING COMPUTATION BLOCK
+# ==========================================
 m_ratio = Lx / Ly if Ly > 0 else 0
 is_one_way = m_ratio < 0.5
 slab_type_str = "One-Way Slab" if is_one_way else "Two-Way Slab"
 
-# EUDL Calculations (Structural Load Equalization Engine)
 slab_area = Lx * Ly
 t = t_cm / 100
 slab_self_weight = t * 2400
 
-# Convert Line Load to EUDL using standard area-averaging with a 1.5 concentrations factor for bending safety
+# EUDL Calculations (Structural Load Equalization Engine)
 eudl_line_load = (line_load_w * line_load_len / slab_area) * 1.5 if slab_area > 0 else 0.0
-# Convert Point Load to EUDL using concentration factor of 2.0 based on structural elastic strip methods
 eudl_point_load = (point_load_p * point_load_count / slab_area) * 2.0 if slab_area > 0 else 0.0
-
-# Total Load Compilations
 total_structural_dl = slab_self_weight + UDL_SDL + eudl_line_load + eudl_point_load
 
 if method == "Strength Design Method (SDM / USD)":
@@ -228,7 +234,20 @@ As_xt_prov = (ab / s_xt) * 100
 As_yb_prov = (ab / s_yb) * 100
 As_yt_prov = (ab / s_yt) * 100 if s_yt > 0 else 0.0
 
-# 5. Advanced Workspace Tabs Layout
+# Global Takeoff Calculations (Shared by BOM and Report Modules)
+concrete_volume = slab_area * t
+weight_m = (math.pi / 4) * ((main_bar / 1000) ** 2) * 7850
+steel_len_x = (100 / s_xb * Lx) + (100 / s_xt * Lx * 0.5) 
+steel_len_y = (100 / s_yb * Ly) + (100 / s_yt * Ly * 0.5 if s_yt > 0 else 0)
+calc_steel_weight = (steel_len_x * Ly + steel_len_y * Lx) * weight_m
+
+cost_con = concrete_volume * unit_concrete_cost
+cost_st = calc_steel_weight * unit_steel_cost
+grand_total = cost_con + cost_st
+
+# ==========================================
+# 5. WORKSPACE INTERFACE TABS
+# ==========================================
 tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Safety & Code Compliance", 
     "🎨 Structural Detailing Sketch", 
@@ -278,19 +297,6 @@ with tab2:
 
 with tab3:
     st.subheader("Bill of Quantities (BOQ) & Financial Overview")
-    
-    # --- ADD THIS LINE TO FIX THE ERROR ---
-    concrete_volume = slab_area * t 
-    # --------------------------------------
-    
-    weight_m = (math.pi / 4) * ((main_bar / 1000) ** 2) * 7850
-    steel_len_x = (100 / s_xb * Lx) + (100 / s_xt * Lx * 0.5) 
-    steel_len_y = (100 / s_yb * Ly) + (100 / s_yt * Ly * 0.5 if s_yt > 0 else 0)
-    calc_steel_weight = (steel_len_x * Ly + steel_len_y * Lx) * weight_m
-    
-    cost_con = concrete_volume * unit_concrete_cost
-    cost_st = calc_steel_weight * unit_steel_cost
-    grand_total = cost_con + cost_st
     
     takeoff_data = {
         "Material Component": ["Structural Concrete Intake", "High-Tensile Reinforcement Steel", "Combined Estimated Core Cost"],
