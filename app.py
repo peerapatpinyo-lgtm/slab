@@ -3,12 +3,19 @@ import math
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 1. Page Config
-st.set_page_config(page_title="SlabMaster Pro V2 - Visual Suite", layout="wide")
-st.title("🦅 SlabMaster Pro V2 (Visual Boundary Edition)")
-st.caption("Fully Compliant with ACI 318-99 Method 3 | Enhanced Visual UI")
+# ==========================================
+# 1. PAGE CONFIGURATION & THEME
+# ==========================================
+st.set_page_config(page_title="SlabMaster Pro V3 - Engineering Suite", layout="wide")
+st.title("🦅 SlabMaster Pro V3 (Ultimate Visual Engine)")
+st.caption("Commercial-Grade Reinforced Concrete Design Software | ACI 318-99 Method 3 Fully Compliant")
 
-# 2. ACI Coefficient Core Engine
+# Set matplotlib style for clean engineering look
+plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available() else 'default')
+
+# ==========================================
+# 2. CORE DATABASE (ACI METHOD 3)
+# ==========================================
 def get_full_aci_method3_coeffs(case_num, m_ratio):
     aci_database = {
         1: {1.0: (0.033, 0.015, 0.018, 0.033, 0.015, 0.018), 0.9: (0.040, 0.017, 0.021, 0.027, 0.012, 0.014), 0.8: (0.048, 0.019, 0.025, 0.022, 0.009, 0.011), 0.7: (0.056, 0.022, 0.030, 0.016, 0.007, 0.008), 0.6: (0.064, 0.024, 0.035, 0.011, 0.005, 0.005), 0.5: (0.072, 0.026, 0.041, 0.007, 0.003, 0.003)},
@@ -32,98 +39,105 @@ def get_full_aci_method3_coeffs(case_num, m_ratio):
             return tuple(v1[j] + (v2[j] - v1[j]) * (m_ratio - r1) / (r2 - r1) for j in range(6))
     return selected_case[1.0]
 
-# ==========================================
-# 3. SIDEBAR CONTROLS & GEOMETRY
-# ==========================================
-st.sidebar.header("📐 Slab Geometry")
-Lx = st.sidebar.number_input("Short Span Lx (m)", min_value=1.0, max_value=12.0, value=4.0, step=0.1)
-Ly = st.sidebar.number_input("Long Span Ly (m)", min_value=1.0, max_value=24.0, value=5.0, step=0.1)
-t_cm = st.sidebar.slider("Slab Thickness t (cm)", min_value=8.0, max_value=35.0, value=15.0, step=0.5)
-covering_cm = st.sidebar.slider("Clear Cover (cm)", min_value=1.5, max_value=5.0, value=2.0, step=0.5)
-
-st.sidebar.header("🛠️ Material & Framework")
-method = st.sidebar.selectbox("Design Framework", ["Strength Design Method (SDM / USD)", "Working Stress Design (WSD)"])
-fc_prime = st.sidebar.number_input("Concrete Strength fc' (kg/cm²)", min_value=140, max_value=450, value=280)
-fy = st.sidebar.selectbox("Rebar Yield strength fy (kg/cm²)", [2400, 3000, 4000], index=2)
-
-st.sidebar.header("⚖️ Loading Parameters")
-UDL_SDL = st.sidebar.number_input("Floor Finish / SDL (kg/m²)", value=120)
-UDL_LL = st.sidebar.number_input("Occupancy Live Load (kg/m²)", value=250)
-line_load_w = st.sidebar.number_input("Wall Line Load (kg/m)", value=180.0)
-line_load_len = st.sidebar.number_input("Wall Total Length (m)", value=4.0)
-point_load_p = st.sidebar.number_input("Equipment Point Load (kg)", value=500.0)
-point_load_count = st.sidebar.number_input("Point Load Qty", value=1)
-
-st.sidebar.header("💰 Cost Setup")
-unit_concrete_cost = st.sidebar.number_input("Concrete Price (per m³)", value=2200)
-unit_steel_cost = st.sidebar.number_input("Steel Price (per kg)", value=28)
-
-# ==========================================
-# VISUAL BOUNDARY CONDITION SELECTOR IN MAIN APP
-# ==========================================
-st.markdown("### 🗺️ Visual Boundary Condition Selector (ACI Method 3)")
-st.info("💡 เส้นหนาทึบ (▓▓▓) = ขอบต่อเนื่องกับห้องอื่น | เส้นบาง (---) = ขอบอิสระ/ขอบนอกอาคาร")
-
-# Custom dictionary with ASCII visualization matrix to make it intuitive
-cases_visual_dict = {
-    "Case 1: Fully Continuous (Interior Panel)": {
-        "id": 1,
-        "ui": "```\n      ▓▓▓▓▓▓▓▓▓▓▓▓▓\n      ▓           ▓\n      ▓  CASE 1   ▓\n      ▓  (กลางตึก) ▓\n      ▓           ▓\n      ▓▓▓▓▓▓▓▓▓▓▓▓▓\n```"
-    },
-    "Case 2: Fully Discontinuous (Isolated)": {
-        "id": 2,
-        "ui": "```\n      -------------\n      |           |\n      |  CASE 2   |\n      | (พื้นเดี่ยว) |\n      |           |\n      -------------\n```"
-    },
-    "Case 3: One Long Edge Continuous": {
-        "id": 3,
-        "ui": "```\n      ▓▓▓▓▓▓▓▓▓▓▓▓▓\n      |           |\n      |  CASE 3   |\n      |           |\n      |           |\n      -------------\n```"
-    },
-    "Case 4: One Short Edge Continuous": {
-        "id": 4,
-        "ui": "```\n      -------------\n      ▓           |\n      ▓  CASE 4   |\n      ▓           |\n      ▓           |\n      -------------\n```"
-    },
-    "Case 5: Two Adjacent Edges Continuous": {
-        "id": 5,
-        "ui": "```\n      ▓▓▓▓▓▓▓▓▓▓▓▓▓\n      ▓           |\n      ▓  CASE 5   |\n      ▓  (มุมตึก)  |\n      ▓           |\n      -------------\n```"
-    },
-    "Case 6: Two Long Edges Continuous": {
-        "id": 6,
-        "ui": "```\n      ▓▓▓▓▓▓▓▓▓▓▓▓▓\n      |           |\n      |  CASE 6   |\n      |           |\n      |           |\n      ▓▓▓▓▓▓▓▓▓▓▓▓▓\n```"
-    },
-    "Case 7: Two Short Edges Continuous": {
-        "id": 7,
-        "ui": "```\n      -------------\n      ▓           ▓\n      ▓  CASE 7   ▓\n      ▓           ▓\n      ▓           ▓\n      -------------\n```"
-    },
-    "Case 8: Three Edges Continuous (Short Discont.)": {
-        "id": 8,
-        "ui": "```\n      ▓▓▓▓▓▓▓▓▓▓▓▓▓\n      ▓           ▓\n      ▓  CASE 8   ▓\n      ▓           ▓\n      ▓           ▓\n      -------------\n```"
-    },
-    "Case 9: Three Edges Continuous (Long Discont.)": {
-        "id": 9,
-        "ui": "```\n      ▓▓▓▓▓▓▓▓▓▓▓▓▓\n      ▓           |\n      ▓  CASE 9   |\n      ▓           |\n      ▓           |\n      ▓▓▓▓▓▓▓▓▓▓▓▓▓\n```"
-    }
+# Mapping boundaries: (Top, Bottom, Left, Right) - True means Continuous (Fixed over beam)
+case_boundaries = {
+    1: (True, True, True, True),     # Case 1
+    2: (False, False, False, False), # Case 2
+    3: (True, False, False, False),  # Case 3 (One Long Edge Cont. -> Assume Top)
+    4: (False, False, True, False),  # Case 4 (One Short Edge Cont. -> Assume Left)
+    5: (True, False, True, False),   # Case 5 (Two Adjacent -> Top + Left)
+    6: (True, True, False, False),   # Case 6 (Two Long Edges)
+    7: (False, False, True, True),   # Case 7 (Two Short Edges)
+    8: (True, True, True, False),    # Case 8 (Three Continuous, Right Short edge free)
+    9: (True, False, True, True)     # Case 9 (Three Continuous, Bottom Long edge free)
 }
 
-selected_case_name = st.selectbox("คลิกเลือกเคสแผ่นพื้นตามตำแหน่งในโครงสร้างของคุณ:", list(cases_visual_dict.keys()))
+# ==========================================
+# 3. SIDEBAR PARAMETERS
+# ==========================================
+st.sidebar.header("📐 Geometric Configuration")
+Lx = st.sidebar.number_input("Short Span Lx (m) - ทิศทาง X", min_value=1.0, max_value=12.0, value=4.0, step=0.1)
+Ly = st.sidebar.number_input("Long Span Ly (m) - ทิศทาง Y", min_value=1.0, max_value=24.0, value=5.0, step=0.1)
+t_cm = st.sidebar.slider("Slab Thickness t (cm)", min_value=8.0, max_value=35.0, value=15.0, step=0.5)
+covering_cm = st.sidebar.slider("Clear Concrete Cover (cm)", min_value=1.5, max_value=5.0, value=2.0, step=0.5)
 
-# Render visual representation dynamically inside an expansive container
-st.markdown(cases_visual_dict[selected_case_name]["ui"])
-case_selected = cases_visual_dict[selected_case_name]["id"]
+st.sidebar.header("🛠️ Material Specifications")
+method = st.sidebar.selectbox("Design Method Framework", ["Strength Design Method (SDM / USD)", "Working Stress Design (WSD)"])
+fc_prime = st.sidebar.number_input("Concrete Strength fc' (kg/cm²)", min_value=140, max_value=450, value=280)
+fy = st.sidebar.selectbox("Rebar Yield Strength fy (kg/cm²)", [2400, 3000, 4000], index=2)
+
+st.sidebar.header("⚖️ Loading Systems")
+UDL_SDL = st.sidebar.number_input("Superimposed Dead Load (kg/m²)", value=120)
+UDL_LL = st.sidebar.number_input("Occupancy Live Load (kg/m²)", value=250)
+line_load_w = st.sidebar.number_input("Partition Wall Load (kg/m)", value=180.0)
+line_load_len = st.sidebar.number_input("Total Length of Wall on Slab (m)", value=4.0)
+point_load_p = st.sidebar.number_input("Heavy Equipment Point Load (kg)", value=500.0)
+point_load_count = st.sidebar.number_input("Point Load Quantity", value=1)
+
+st.sidebar.header("💰 Budgeting Rates")
+unit_concrete_cost = st.sidebar.number_input("Concrete Rate (THB / m³)", value=2200)
+unit_steel_cost = st.sidebar.number_input("Steel Rate (THB / kg)", value=28)
 
 # ==========================================
-# 4. CORE MATH & STRUCTURAL ENGINEERING
+# 4. INTERACTIVE GRAPHICAL SELECTOR (PLAN VIEW)
 # ==========================================
-m_ratio = Lx / Ly if Ly > 0 else 0
-is_one_way = m_ratio < 0.5
-slab_type_str = "One-Way Slab (พื้นทางเดียว)" if is_one_way else "Two-Way Slab (พื้นสองทาง)"
+st.markdown("### 🗺️ Dynamic Plan View & Boundary Selector")
+col_sel, col_gfx = st.columns([4, 3])
 
-st.metric(label="Slab System Classification", value=slab_type_str, delta=f"Aspect Ratio m = {m_ratio:.3f}")
+with col_sel:
+    case_idx = st.selectbox("เลือกผังการต่อเนื่องของแผ่นพื้น (ACI Cases 1-9):", [
+        "Case 1: Fully Continuous (แผ่นพื้นภายใน ต่อเนื่องทั้ง 4 ด้าน)",
+        "Case 2: Fully Discontinuous (แผ่นพื้นเดี่ยว ไม่ต่อเนื่องเลยทั้ง 4 ด้าน)",
+        "Case 3: One Long Edge Continuous (ต่อเนื่องด้านยาวด้านเดียว)",
+        "Case 4: One Short Edge Continuous (ต่อเนื่องด้านสั้นด้านเดียว)",
+        "Case 5: Two Adjacent Edges Continuous (ต่อเนื่อง 2 ด้านติดกัน - ขอบมุมตึก)",
+        "Case 6: Two Long Edges Continuous (ต่อเนื่องด้านยาว 2 ด้านตรงข้ามกัน)",
+        "Case 7: Two Short Edges Continuous (ต่อเนื่องด้านสั้น 2 ด้านตรงข้ามกัน)",
+        "Case 8: Three Edges Continuous (ต่อเนื่อง 3 ด้าน - ขอบด้านสั้นปล่อยอิสระ 1 ด้าน)",
+        "Case 9: Three Edges Continuous (ต่อเนื่อง 3 ด้าน - ขอบด้านยาวปล่อยอิสระ 1 ด้าน)"
+    ])
+    case_selected = int(case_idx.split(":")[0].split(" ")[1])
+    
+    m_ratio = Lx / Ly if Ly > 0 else 0
+    is_one_way = m_ratio < 0.5
+    slab_type_str = "One-Way Slab (พื้นทางเดียว)" if is_one_way else "Two-Way Slab (พื้นสองทาง)"
+    st.metric(label="ระบบจำแนกประเภทพื้นพิจารณาอัตโนมัติ:", value=slab_type_str, delta=f"อัตราส่วนมิติสปัน m = {m_ratio:.3f}")
 
+with col_gfx:
+    # Plotting Live Boundary Diagram
+    bounds = case_boundaries[case_selected]
+    fig_plan, ax_plan = plt.subplots(figsize=(4.5, 3.8))
+    
+    # Draw Slab Area Base
+    ax_plan.add_patch(plt.Rectangle((0.1, 0.1), 0.8, 0.8, facecolor='#f1f2f6', edgecolor='none'))
+    ax_plan.text(0.5, 0.5, f"SLAB PANEL\n{Lx:.1f}m x {Ly:.1f}m", ha='center', va='center', weight='bold', color='#2f3542')
+    
+    # Draw borders depending on continuity settings
+    # Top Edge
+    ax_plan.plot([0.1, 0.9], [0.9, 0.9], color='#ff4757' if bounds[0] else '#a4b0be', linewidth=5 if bounds[0] else 2, linestyle='-' if bounds[0] else '--')
+    ax_plan.text(0.5, 0.93, "Continuous" if bounds[0] else "Discontinuous (Free)", ha='center', fontsize=8, color='#ff4757' if bounds[0] else '#747d8c')
+    # Bottom Edge
+    ax_plan.plot([0.1, 0.9], [0.1, 0.1], color='#ff4757' if bounds[1] else '#a4b0be', linewidth=5 if bounds[1] else 2, linestyle='-' if bounds[1] else '--')
+    ax_plan.text(0.5, 0.03, "Continuous" if bounds[1] else "Discontinuous (Free)", ha='center', fontsize=8, color='#ff4757' if bounds[1] else '#747d8c')
+    # Left Edge
+    ax_plan.plot([0.1, 0.1], [0.1, 0.9], color='#ff4757' if bounds[2] else '#a4b0be', linewidth=5 if bounds[2] else 2, linestyle='-' if bounds[2] else '--')
+    ax_plan.text(0.02, 0.5, "Continuous" if bounds[2] else "Free", va='center', rotation=90, fontsize=8, color='#ff4757' if bounds[2] else '#747d8c')
+    # Right Edge
+    ax_plan.plot([0.9, 0.9], [0.1, 0.9], color='#ff4757' if bounds[3] else '#a4b0be', linewidth=5 if bounds[3] else 2, linestyle='-' if bounds[3] else '--')
+    ax_plan.text(0.95, 0.5, "Continuous" if bounds[3] else "Free", va='center', rotation=-90, fontsize=8, color='#ff4757' if bounds[3] else '#747d8c')
+    
+    ax_plan.set_xlim(0, 1)
+    ax_plan.set_ylim(0, 1)
+    ax_plan.axis('off')
+    st.pyplot(fig_plan)
+
+# ==========================================
+# 5. STRUCTURAL ANALYTICAL ENGINE
+# ==========================================
 slab_area = Lx * Ly
 t = t_cm / 100
 slab_self_weight = t * 2400
 
-# EUDL Engine Transformation
 eudl_line_load = (line_load_w * line_load_len / slab_area) * 1.5 if slab_area > 0 else 0.0
 eudl_point_load = (point_load_p * point_load_count / slab_area) * 2.0 if slab_area > 0 else 0.0
 total_structural_dl = slab_self_weight + UDL_SDL + eudl_line_load + eudl_point_load
@@ -133,7 +147,6 @@ if method == "Strength Design Method (SDM / USD)":
 else:
     w_u = total_structural_dl + UDL_LL
 
-# Flexural Moments Matrix Calculator
 if is_one_way:
     M_x_pos = (w_u * (Lx ** 2)) / 11
     M_x_neg = (w_u * (Lx ** 2)) / 10
@@ -153,12 +166,12 @@ else:
         M_y_neg = cy_n * (total_structural_dl + UDL_LL) * (Lx ** 2)
     V_u = (w_u * Lx) / 3
 
-# Safety Controls & Deflection Checks
+# Deflection Bounds Check
 t_min_req = (Lx / 24) * (0.4 + fy/7000) * 100 if is_one_way else (2 * (Lx + Ly) / 180) * 100
 deflection_passed = t_cm >= t_min_req
 
-# Rebar Reinforcement Calculations
-main_bar = st.selectbox("Design Rebar Diameter (mm):", [9, 12, 16], index=1)
+# Sectional Area Requirements Engine
+main_bar = st.selectbox("เลือกขนาดเส้นผ่านศูนย์กลางเหล็กแกนที่ใช้ (mm):", [9, 12, 16], index=1)
 ab = (math.pi / 4) * ((main_bar / 10) ** 2)
 d = t_cm - covering_cm - (main_bar / 20)
 as_min_ratio = 0.0018 if fy >= 4000 else 0.0020
@@ -180,18 +193,38 @@ As_xt_req = max(compute_exact_as(M_x_neg, d, fc_prime, fy, method), As_min)
 As_yb_req = max(compute_exact_as(M_y_pos, d, fc_prime, fy, method), As_min) if not is_one_way else As_min
 As_yt_req = max(compute_exact_as(M_y_neg, d, fc_prime, fy, method), As_min) if (not is_one_way and M_y_neg > 0) else 0.0
 
-st.markdown("### 🎛️ Real-world Field Construction Pitch Setup (@ cm)")
+# Dynamic Auto-Spacing Suggestion Generator (If manual spacing fails)
+def get_max_safe_spacing(as_required, bar_area):
+    if as_required <= 0: return 25.0
+    calc_s = (bar_area / as_required) * 100
+    # Code requirement limit max spacing to 3t or 45cm
+    return min(floor_to_half_cm(calc_s), 3 * t_cm, 45.0)
+
+def floor_to_half_cm(val):
+    return math.floor(val * 2) / 2
+
+# Input spacing layout
+st.markdown("### 🎛️ ปรับแต่งระยะห่างเหล็กหน้างาน (Construction Pitch Control)")
 c1, c2, c3, c4 = st.columns(4)
-with c1: s_xb = c1.number_input("Bottom Spacing X (@ cm)", value=15.0, step=0.5)
-with c2: s_xt = c2.number_input("Top Spacing X (@ cm)", value=15.0, step=0.5)
-with c3: s_yb = c3.number_input("Bottom Spacing Y (@ cm)", value=20.0, step=0.5)
-with c4: s_yt = c4.number_input("Top Spacing Y (@ cm)", value=20.0, step=0.5)
+with c1: 
+    s_xb = c1.number_input("เหล็กล่าง แกน X (@ cm)", value=15.0, step=0.5)
+    s_xb_max = get_max_safe_spacing(As_xb_req, ab)
+with c2: 
+    s_xt = c2.number_input("เหล็กบน Support X (@ cm)", value=15.0, step=0.5)
+    s_xt_max = get_max_safe_spacing(As_xt_req, ab)
+with c3: 
+    s_yb = c3.number_input("เหล็กล่าง แกน Y (@ cm)", value=20.0, step=0.5)
+    s_yb_max = get_max_safe_spacing(As_yb_req, ab)
+with c4: 
+    s_yt = c4.number_input("เหล็กบน Support Y (@ cm)", value=20.0, step=0.5)
+    s_yt_max = get_max_safe_spacing(As_yt_req, ab)
 
 As_xb_prov = (ab / s_xb) * 100
 As_xt_prov = (ab / s_xt) * 100
 As_yb_prov = (ab / s_yb) * 100
 As_yt_prov = (ab / s_yt) * 100 if s_yt > 0 else 0.0
 
+# Quantities Core Logic Block
 concrete_volume = slab_area * t
 weight_m = (math.pi / 4) * ((main_bar / 1000) ** 2) * 7850
 steel_len_x = (100 / s_xb * Lx) + (100 / s_xt * Lx * 0.5) 
@@ -203,70 +236,90 @@ cost_st = calc_steel_weight * unit_steel_cost
 grand_total = cost_con + cost_st
 
 # ==========================================
-# 5. CODE OUTPUT TABS INTERFACE
+# 6. OUTPUT WORKSPACE DISPLAY TABS
 # ==========================================
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Compliance", "🎨 Blueprint", "💰 Takeoff (BOQ)", "📑 Design Report"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 Safety & Code Compliance", 
+    "📈 Bending Moment Profiles", 
+    "💰 Takeoff Material BOM", 
+    "📑 Formal Calculation Document"
+])
 
 with tab1:
-    st.subheader("Structural Integrity Check")
-    thick_status = "🟢 Passed" if deflection_passed else f"⚠️ Increase to {t_min_req:.1f} cm"
-    status_xb = "🟢 Passed" if As_xb_prov >= As_xb_req else "🔴 Deficient Steel Area"
-    status_xt = "🟢 Passed" if As_xt_prov >= As_xt_req else "🔴 Deficient Steel Area"
-    status_yb = "🟢 Passed" if As_yb_prov >= As_yb_req else "🔴 Deficient Steel Area"
+    st.subheader("Structural Integrity Check & Smart Recommendations")
+    
+    thick_status = "🟢 Passed" if deflection_passed else f"🔴 หนาไม่พอ! ACI บังคับขั้นต่ำ {t_min_req:.1f} cm"
+    status_xb = "🟢 Passed" if As_xb_prov >= As_xb_req else f"🔴 เหล็กขาด! แนะนำปรับระยะห่างเป็น @ ≤ {s_xb_max} cm"
+    status_xt = "🟢 Passed" if As_xt_prov >= As_xt_req else f"🔴 เหล็กขาด! แนะนำปรับระยะห่างเป็น @ ≤ {s_xt_max} cm"
+    status_yb = "🟢 Passed" if As_yb_prov >= As_yb_req else f"🔴 เหล็กขาด! แนะนำปรับระยะห่างเป็น @ ≤ {s_yb_max} cm"
     
     compliance_data = {
-        "Checklist Metric": ["Min Slab Depth", "Bottom Rebar X", "Top Rebar X", "Bottom Rebar Y"],
-        "Target": [f"≥ {t_min_req:.1f} cm", f"{As_xb_req:.2f} cm²/m", f"{As_xt_req:.2f} cm²/m", f"{As_yb_req:.2f} cm²/m"],
-        "Actual": [f"{t_cm:.1f} cm", f"{As_xb_prov:.2f} cm²/m", f"{As_xt_prov:.2f} cm²/m", f"{As_yb_prov:.2f} cm²/m"],
-        "Result": [thick_status, status_xb, status_xt, status_yb]
+        "ดัชนีตรวจสอบกำลังตามมาตรฐานควบคุม": ["ความหนาแผ่นพื้น (Deflection Control)", "ปริมาณเหล็กเสริมล่าง แกน X", "ปริมาณเหล็กเสริมบน (หัวคาน) X", "ปริมาณเหล็กเสริมล่าง แกน Y"],
+        "ค่าเป้าหมายทางวิศวกรรม": [f"≥ {t_min_req:.1f} cm", f"{As_xb_req:.2f} cm²/m", f"{As_xt_req:.2f} cm²/m", f"{As_yb_req:.2f} cm²/m"],
+        "ค่าที่จัดให้จริงหน้างาน": [f"{t_cm:.1f} cm", f"{As_xb_prov:.2f} cm²/m", f"{As_xt_prov:.2f} cm²/m", f"{As_yb_prov:.2f} cm²/m"],
+        "สถานะประเมินผลปลอดภัย": [thick_status, status_xb, status_xt, status_yb]
     }
     st.table(pd.DataFrame(compliance_data))
 
 with tab2:
-    st.subheader("Dynamic Cross-Section Draft")
-    fig, ax = plt.subplots(figsize=(11, 3.5))
-    ax.add_patch(plt.Rectangle((10, 0), 80, t_cm, facecolor='#f8f9fa', edgecolor='#1e272e', linewidth=2.5, hatch='/'))
-    ax.add_patch(plt.Rectangle((0, -15), 10, t_cm+15, facecolor='#dcdde1', edgecolor='#2f3640'))
-    ax.add_patch(plt.Rectangle((90, -15), 10, t_cm+15, facecolor='#dcdde1', edgecolor='#2f3640'))
-    ax.plot([1.5, 98.5], [covering_cm, covering_cm], color='#eb2f06', linewidth=3)
-    ax.plot([0, 25], [t_cm-covering_cm, t_cm-covering_cm], color='#0652dd', linewidth=3)
-    ax.plot([75, 100], [t_cm-covering_cm, t_cm-covering_cm], color='#0652dd', linewidth=3)
-    ax.text(32, t_cm/2, f"Main Bottom: DB{main_bar} @ {s_xb:.1f} cm", color='#eb2f06', weight='bold')
-    ax.text(12, t_cm + 3, f"Top Support: DB{main_bar} @ {s_xt:.1f} cm", color='#0652dd', weight='bold')
-    ax.set_xlim(-5, 105)
-    ax.set_ylim(-18, t_cm + 12)
-    ax.axis('off')
-    st.pyplot(fig)
+    st.subheader("Bending Moment Internal Forces Graph")
+    
+    # Render Bar Chart comparing real design forces
+    fig_mom, ax_mom = plt.subplots(figsize=(10, 3.5))
+    moments_labels = ['Mx+ (Midspan X)', 'Mx- (Support X)', 'My+ (Midspan Y)', 'My- (Support Y)']
+    moments_values = [M_x_pos, M_x_neg, M_y_pos, M_y_neg]
+    
+    bars = ax_mom.barh(moments_labels, moments_values, color=['#3498db', '#e74c3c', '#2ecc71', '#f1c40f'], edgecolor='none', height=0.5)
+    ax_mom.bar_label(bars, fmt='%.1f kg-m', padding=5, weight='bold')
+    ax_mom.set_xlabel('Ultimate Design Bending Moment (kg-m)')
+    ax_mom.set_title('เปรียบเทียบแรงดัดที่เกิดขึ้นในแต่ละตำแหน่งบนแผ่นพื้น')
+    st.pyplot(fig_mom)
 
 with tab3:
-    st.subheader("Bill of Quantities (BOQ)")
+    st.subheader("Bill of Quantities (BOQ) Summary Breakdown")
     takeoff_data = {
-        "Material Component": ["Concrete Volume", "Reinforcement High-Tensile Steel", "Total Material Core Cost"],
-        "Quantity": [f"{concrete_volume:.2f} m³", f"{calc_steel_weight:.1f} kg", f"{grand_total:,.2f} THB"],
-        "Logic": ["Geometric Volumetric Formula", "Spacing layouts including basic hook estimations", "Net procurement costs without factoring waste"]
+        "องค์ประกอบวัสดุโครงสร้าง": ["คอนกรีตโครงสร้างฐานราก/แผ่นพื้น", "เหล็กเสริมรับแรงดึง High-Tensile Steel", "รวมต้นทุนค่าวัสดุสุทธิ (Core Structural Cost)"],
+        "ปริมาณคำนวณสุทธิ": [f"{concrete_volume:.2f} m³", f"{calc_steel_weight:.1f} kg", f"{grand_total:,.2f} THB"],
+        "สรุปแนวคิดตรรกะการถอดแบบ": [
+            "คำนวณจากปริมาตรทางเรขาคณิตตรงตามความหนาจริง", 
+            "คำนวณจากน้ำหนักเหล็กจริงรวมระยะต่อทาบและงอขอมาตรฐาน", 
+            "คำนวณอิงจากราคาต่อหน่วยโดยไม่รวมค่าแรงและสัมประสิทธิ์เผื่อสูญเสียหน้างาน"
+        ]
     }
     st.table(pd.DataFrame(takeoff_data))
 
 with tab4:
-    st.subheader("ACI 318 Structural Calculation Record")
+    st.subheader("ACI 318 Structural Calculation Record Output")
     report_body = f"""======================================================================
          OFFICIAL STRUCTURAL VERIFICATION & CALCULATION DOCUMENT
 ======================================================================
-Design Regulation Profile: ACI 318-99 Method 3 Analysis
+Design Framework Regulation: ACI 318-99 Method 3 Analysis
 ----------------------------------------------------------------------
-[1] GEOMETRICAL ANALYSIS:
-- Aspect Ratio (m = Lx/Ly): {m_ratio:.3f} -> {slab_type_str}
-- Selected Boundary Configuration: {selected_case_name}
-- Deflection Depth Target vs Configured: {t_min_req:.1f} cm req. vs {t_cm:.1f} cm actual
+[1] GEOMETRICAL SYSTEM DIAGNOSTICS:
+- Geometry Dimensions: Short Aspect Lx = {Lx:.2f} m | Long Aspect Ly = {Ly:.2f} m
+- Aspect Ratio (m = Lx/Ly): {m_ratio:.3f} -> Classification: {slab_type_str}
+- Boundary Condition Profile Selected: {case_idx}
+- Structural Control Thickness: Check Requirement {t_min_req:.1f} cm vs Configured {t_cm:.1f} cm
 
-[2] ULTIMATE LOAD PROFILE:
-- Total Structural Dead Load: {total_structural_dl:.2f} kg/m² (Slab SW + SDL + EUDL Walls + EUDL Point Load)
-- Ultimate Factored Design Action (w_u): {w_u:.2f} kg/m²
+[2] LOAD INTENSITY DISTRIBUTION DOCKET:
+- Slab Concrete SW: {slab_self_weight:.2f} kg/m²
+- Superimposed Dead Load (SDL): {UDL_SDL:.2f} kg/m²
+- Equalized Partition Wall Load (EUDL): {eudl_line_load:.2f} kg/m²
+- Equalized Point Load Actions (EUDL): {eudl_point_load:.2f} kg/m²
+- Total Structural Factored Ultimate Load (w_u): {w_u:.2f} kg/m²
 
-[3] STRUCTURAL CROSS-SECTION VERIFICATION STATUS:
-- Bottom Mesh Setup X: DB{main_bar} @ {s_xb:.1f} cm [Prov: {As_xb_prov:.2f} / Req: {As_xb_req:.2f} cm²/m] -> {"SECURE" if As_xb_prov >= As_xb_req else "DEFICIENT"}
-- Top Support Setup X: DB{main_bar} @ {s_xt:.1f} cm [Prov: {As_xt_prov:.2f} / Req: {As_xt_req:.2f} cm²/m] -> {"SECURE" if As_xt_prov >= As_xt_req else "DEFICIENT"}
-- Bottom Mesh Setup Y: DB{main_bar} @ {s_yb:.1f} cm [Prov: {As_yb_prov:.2f} / Req: {As_yb_req:.2f} cm²/m] -> {"SECURE" if As_yb_prov >= As_yb_req else "DEFICIENT"}
+[3] EXPERT MECHANICAL OUTPUT ANALYSIS:
+- Ultimate Moment Mx+ (Short Span Mid): {M_x_pos:.2f} kg-m
+- Ultimate Moment Mx- (Short Span Continuous edge): {M_x_neg:.2f} kg-m
+- Ultimate Moment My+ (Long Span Mid): {M_y_pos:.2f} kg-m
+- Ultimate Moment My- (Long Span Continuous edge): {M_y_neg:.2f} kg-m
+
+[4] STEEL VERIFICATION COMPLIANCE CHECKLIST:
+- Rebar Size Used: DB{main_bar} mm (Area per bar = {ab:.3f} cm²)
+- Mesh Layout X Bottom: Pitch @ {s_xb:.1f} cm [As Prov: {As_xb_prov:.2f} / Req: {As_xb_req:.2f} cm²/m] -> Status: {"PASS" if As_xb_prov >= As_xb_req else "FAIL"}
+- Mesh Layout X Top   : Pitch @ {s_xt:.1f} cm [As Prov: {As_xt_prov:.2f} / Req: {As_xt_req:.2f} cm²/m] -> Status: {"PASS" if As_xt_prov >= As_xt_req else "FAIL"}
+- Mesh Layout Y Bottom: Pitch @ {s_yb:.1f} cm [As Prov: {As_yb_prov:.2f} / Req: {As_yb_req:.2f} cm²/m] -> Status: {"PASS" if As_yb_prov >= As_yb_req else "FAIL"}
 ======================================================================
 """
     st.code(report_body, language="text")
+    st.download_button("📥 Download Engineering Record (.txt)", data=report_body, file_name="Engineering_Report.txt")
