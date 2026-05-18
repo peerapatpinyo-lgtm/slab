@@ -369,167 +369,131 @@ with tab3:
 # แก้ไขบรรทัดสัญกรณ์แท็บเดิม ให้เพิ่ม "📋 แบบขยายหน้าตัดพื้น" เข้าไป
 
 with tab4:
-    st.subheader("📋 แบบขยายรายละเอียดการเสริมเหล็กและปริมาณวัสดุ (Structural Detailing & Takeoff)")
-    st.markdown("แบบขยายหน้าตัดสัดส่วนจริง (True Scale) แยกพฤติกรรมการเสริมเหล็กตามประเภทแผ่นพื้นอย่างถูกต้อง")
+    st.subheader("📋 แบบขยายรายละเอียดการเสริมเหล็ก (Structural Detailing)")
+    st.markdown("แบบขยายหน้าตัดแสดงการเรียงชั้นเหล็กเสริม (Layering) ตามหลักวิศวกรรม")
 
-    # 1. จัดการตัวแปรกรณีที่เป็น One-Way Slab เพื่อป้องกันตารางและรูปภาพพ่น Error
-    if is_way_one := is_one_way:  # เช็กสถานะพื้นทางเดียว
-        M_y_pos = 0.0
+    # ป้องกันตัวแปร Error กรณีเป็น One-Way Slab
+    if is_one_way:
+        s_yt = s_yb  # ใช้ระยะเหล็กกันร้าวเดียวกัน
         M_y_neg = 0.0
-        s_yt = s_yb  # ให้เหล็กบนแกน Y มีระยะห่างเท่ากับเหล็กกันร้าวล่างตามมาตรฐาน
-    
-    # ตัวเลือกมุมมองหน้าตัด
+
     view_option = st.radio(
-        "🔄 เลือกมุมมองหน้าตัด (Cross-Section View):",
-        ["หน้าตัดตามแนวช่วงสั้น (Section A-A: Along X-Axis)", "หน้าตัดตามแนวช่วงยาว (Section B-B: Along Y-Axis)"],
+        "🔄 เลือกมุมมองตัด (Section View):",
+        ["Section A-A (ตัดตามแนว X - เห็นเหล็ก X เป็นเส้น)", "Section B-B (ตัดตามแนว Y - เห็นเหล็ก Y เป็นเส้น)"],
         horizontal=True
     )
 
-    # 2. เริ่มสร้างรูปโครงสร้างด้วย Matplotlib
-    fig_sec, ax_sec = plt.subplots(figsize=(11, 5))
+    fig_sec, ax_sec = plt.subplots(figsize=(12, 5))
     ax_sec.set_facecolor('#ffffff')
     
     span_w = 120.0       
     beam_w = 20.0        
-    h_beam = t_cm + 25.0 
+    h_beam = t_cm + 20.0 
     
-    # วาดเนื้อคอนกรีตคานและพื้น
-    left_beam = plt.Rectangle((-beam_w, t_cm - h_beam), beam_w, h_beam, facecolor='#e9ecef', edgecolor='#6c757d', linewidth=1.5, hatch='///')
-    right_beam = plt.Rectangle((span_w, t_cm - h_beam), beam_w, h_beam, facecolor='#e9ecef', edgecolor='#6c757d', linewidth=1.5, hatch='///')
-    slab_body = plt.Rectangle((0, 0), span_w, t_cm, facecolor='#f8f9fa', edgecolor='#6c757d', linewidth=1.5, hatch='...')
-    ax_sec.add_patch(left_beam)
-    ax_sec.add_patch(right_beam)
-    ax_sec.add_patch(slab_body)
+    # 1. วาดคอนกรีตพื้นและคานรองรับ
+    ax_sec.add_patch(plt.Rectangle((-beam_w, t_cm - h_beam), beam_w, h_beam, facecolor='#f1f3f5', edgecolor='#495057', linewidth=1.5))
+    ax_sec.add_patch(plt.Rectangle((span_w, t_cm - h_beam), beam_w, h_beam, facecolor='#f1f3f5', edgecolor='#495057', linewidth=1.5))
+    ax_sec.add_patch(plt.Rectangle((0, 0), span_w, t_cm, facecolor='#f8f9fa', edgecolor='#495057', linewidth=1.5))
 
-    # 3. คำนวณระยะและความลึกชั้นเหล็กแยกตามทิศทางและพฤติกรรมพื้น
-    if "X-Axis" in view_option:
-        # มุมมองแกน X (แกนหลักรับแรง)
-        y_bot_line = covering_cm + (d_main_mm / 20)
-        y_top_line = t_cm - covering_cm - (d_main_mm / 20)
-        
-        bot_rebar_lbl = f"Main Bot: {main_bar} @ {s_xb:.1f} cm"
-        top_rebar_lbl = f"Main Top: {main_bar} @ {s_xt:.1f} cm"
-        cross_rebar_lbl = f"Cross Bar (Y): {temp_bar} @ {s_yb:.1f} cm"
-        top_cut_L = span_w * 0.25
-        show_top_bars = True # แกน X ต้องมีเหล็กเสริมลบบนเสมอ ทั้ง One-way และ Two-way
-    else:
-        # มุมมองแกน Y
-        if is_one_way:
-            # 🚨 กรณี One-Way Slab แกน Y คือเหล็กกันร้าวล้วนๆ ไม่มีเหล็กเสริมลบตัดปลาย
-            y_bot_line = covering_cm + (d_main_mm / 10) + (d_temp_mm / 20)
-            y_top_line = t_cm - covering_cm - (d_temp_mm / 20)
-            
-            bot_rebar_lbl = f"Temp Bot: {temp_bar} @ {s_yb:.1f} cm"
-            top_rebar_lbl = f"Temp Top: {temp_bar} @ {s_yt:.1f} cm (กันร้าวผิวบน)"
-            cross_rebar_lbl = f"Cross Bar (X): {main_bar} @ {s_xb:.1f} cm"
-            top_cut_L = span_w # เหล็กกันร้าวบนวิ่งยาวเต็มแผ่น ไม่ตัด 1/4
-            show_top_bars = True 
-        else:
-            # กรณี Two-Way Slab แกน Y คือแกนรับแรงหลักอันที่สอง
-            y_bot_line = covering_cm + (d_main_mm / 10) + (d_temp_mm / 20)
-            y_top_line = t_cm - covering_cm - (d_main_mm / 10) - (d_temp_mm / 20)
-            
-            bot_rebar_lbl = f"Main Bot (Y): {temp_bar} @ {s_yb:.1f} cm"
-            top_rebar_lbl = f"Main Top (Y): {temp_bar} @ {s_yt:.1f} cm"
-            cross_rebar_lbl = f"Cross Bar (X): {main_bar} @ {s_xb:.1f} cm"
-            top_cut_L = span_w * 0.25
-            show_top_bars = True
+    # คำนวณรัศมีเหล็ก
+    r_main = (d_main_mm / 10) / 2
+    r_temp = (d_temp_mm / 10) / 2
 
-    # 4. วาดเส้นเหล็กเส้นแนวนอน (เหล็กล่างวิ่งยาวเสมอ)
-    ax_sec.plot([-beam_w + 5, span_w + beam_w - 5], [y_bot_line, y_bot_line], color='#1f77b4', linewidth=3, zorder=4, label=bot_rebar_lbl)
-    ax_sec.plot([-beam_w + 5, -beam_w + 5], [y_bot_line, y_bot_line + 4], color='#1f77b4', linewidth=3, zorder=4)
-    ax_sec.plot([span_w + beam_w - 5, span_w + beam_w - 5], [y_bot_line, y_bot_line + 4], color='#1f77b4', linewidth=3, zorder=4)
+    # 2. กำหนดพิกัด Y ของเหล็กแต่ละเลเยอร์ (สำคัญมากสำหรับการทำ Shop Drawing)
+    # เหล็กล่าง (Bottom Mat)
+    y_x_bot = covering_cm + r_main                                  # X อยู่ล่างสุด
+    y_y_bot = covering_cm + (2 * r_main) + r_temp                   # Y นั่งอยู่บน X
+    
+    # เหล็กบน (Top Mat)
+    y_x_top = t_cm - covering_cm - r_main                           # X อยู่บนสุด
+    y_y_top = t_cm - covering_cm - (2 * r_main) - r_temp            # Y สอดอยู่ใต้ X
 
-    # วาดเหล็กบนตามประเภทพื้น
-    if show_top_bars:
-        if is_one_way and "Y-Axis" in view_option:
-            # ถ้าเป็นแกน Y ของ One-Way ให้ลากเหล็กกันร้าวบนวิ่งยาวทะลุคาน ไม่ต้องตัดปลายช่วงพาด
-            ax_sec.plot([-beam_w + 5, span_w + beam_w - 5], [y_top_line, y_top_line], color='#d62728', linewidth=3, zorder=4, label=top_rebar_lbl)
-        else:
-            # รูปแบบปกติ: เหล็กเสริมลบยื่นออกมาระยะ L/4 จากขอบคาน
-            ax_sec.plot([-beam_w + 5, top_cut_L], [y_top_line, y_top_line], color='#d62728', linewidth=3, zorder=4, label=top_rebar_lbl)
-            ax_sec.plot([span_w - top_cut_L, span_w + beam_w - 5], [y_top_line, y_top_line], color='#d62728', linewidth=3, zorder=4)
-        
-        # วาดงอฉากเหล็กบนลงในคาน
-        ax_sec.plot([-beam_w + 5, -beam_w + 5], [y_top_line, y_top_line - 5], color='#d62728', linewidth=3, zorder=4)
-        ax_sec.plot([span_w + beam_w - 5, span_w + beam_w - 5], [y_top_line, y_top_line - 5], color='#d62728', linewidth=3, zorder=4)
-
-    # 5. วาดจุดวงกลมเหล็กขวาง (Cross Bars)
+    # 3. วาดเส้นและจุดเหล็กตามมุมมอง
     dot_spacing = 15.0
     x_dots = [5 + i * dot_spacing for i in range(int(span_w/dot_spacing) + 1)]
-    for x in x_dots:
-        plt.gca().add_patch(plt.Circle((x, y_bot_line + 0.8), 0.5, color='#2ca02c', zorder=5))
     
-    for x in x_dots:
-        if is_one_way and "Y-Axis" in view_option:
-            # แกน Y ของ One-Way มีเหล็กขวางวิ่งกระจายตัวสม่ำเสมอตลอดแนวแผ่น
-            plt.gca().add_patch(plt.Circle((x, y_top_line - 0.8), 0.5, color='#2ca02c', zorder=5))
+    if "Section A-A" in view_option:
+        # มุมมองตัดแกน X (เห็น X เป็นเส้น, Y เป็นจุด)
+        line_bot_y = y_x_bot
+        line_top_y = y_x_top
+        dot_bot_y = y_y_bot
+        dot_top_y = y_y_top
+        
+        lbl_line_bot = f"Main X Bot: {main_bar} @ {s_xb:.1f}"
+        lbl_line_top = f"Main X Top: {main_bar} @ {s_xt:.1f}"
+        lbl_dot = f"Cross Y: {temp_bar} @ {s_yb:.1f}"
+        
+        r_dot = r_temp
+        top_cut_L = span_w * 0.25 # เหล็กบน X ตัด L/4 เสมอ
+        show_top_mid = False
+
+    else:
+        # มุมมองตัดแกน Y (เห็น Y เป็นเส้น, X เป็นจุด)
+        line_bot_y = y_y_bot
+        line_top_y = y_y_top
+        dot_bot_y = y_x_bot
+        dot_top_y = y_x_top
+        
+        lbl_dot = f"Cross X: {main_bar} @ {s_xb:.1f} (จุด)"
+        r_dot = r_main
+        
+        if is_one_way:
+            lbl_line_bot = f"Temp Y Bot: {temp_bar} @ {s_yb:.1f} (เส้น)"
+            lbl_line_top = f"Temp Y Top: {temp_bar} @ {s_yb:.1f} (เส้น)"
+            top_cut_L = span_w # One-way แกน Y: เหล็กกันร้าวบนวิ่งยาวเต็มแผ่น
+            show_top_mid = True
         else:
-            # พื้นแบบอื่นใส่เฉพาะช่วงระยะเหล็กบนหักยื่น (L/4)
-            if x <= top_cut_L or x >= (span_w - top_cut_L):
-                plt.gca().add_patch(plt.Circle((x, y_top_line - 0.8), 0.5, color='#2ca02c', zorder=5))
-                
-    ax_sec.scatter([], [], color='#2ca02c', s=50, label=cross_rebar_lbl)
+            lbl_line_bot = f"Main Y Bot: {temp_bar} @ {s_yb:.1f} (เส้น)"
+            lbl_line_top = f"Main Y Top: {temp_bar} @ {s_yt:.1f} (เส้น)"
+            top_cut_L = span_w * 0.25 # Two-way แกน Y: เหล็กบนตัด L/4
+            show_top_mid = False
 
-    # 6. มิติบอกขนาดและจัดหน้าตาภาพ
-    ax_sec.annotate('', xy=(span_w + beam_w + 5, 0), xytext=(span_w + beam_w + 5, t_cm),
-                    arrowprops=dict(arrowstyle='<->', color='#495057', linewidth=1.2))
-    ax_sec.text(span_w + beam_w + 7, t_cm / 2, f"t = {t_cm:.1f} cm", va='center', ha='left', weight='bold')
+    # วาดเหล็กเส้นยาว (แนวนอน)
+    # เหล็กล่าง
+    ax_sec.plot([-beam_w + 5, span_w + beam_w - 5], [line_bot_y, line_bot_y], color='#1f77b4', linewidth=2.5, label=lbl_line_bot)
+    ax_sec.plot([-beam_w + 5, -beam_w + 5], [line_bot_y, line_bot_y + 4], color='#1f77b4', linewidth=2.5) # Hook
+    ax_sec.plot([span_w + beam_w - 5, span_w + beam_w - 5], [line_bot_y, line_bot_y + 4], color='#1f77b4', linewidth=2.5)
+    
+    # เหล็กบน
+    if show_top_mid:
+        ax_sec.plot([-beam_w + 5, span_w + beam_w - 5], [line_top_y, line_top_y], color='#d62728', linewidth=2.5, label=lbl_line_top)
+    else:
+        ax_sec.plot([-beam_w + 5, top_cut_L], [line_top_y, line_top_y], color='#d62728', linewidth=2.5, label=lbl_line_top)
+        ax_sec.plot([span_w - top_cut_L, span_w + beam_w - 5], [line_top_y, line_top_y], color='#d62728', linewidth=2.5)
+    ax_sec.plot([-beam_w + 5, -beam_w + 5], [line_top_y, line_top_y - 5], color='#d62728', linewidth=2.5) # Hook
+    ax_sec.plot([span_w + beam_w - 5, span_w + beam_w - 5], [line_top_y, line_top_y - 5], color='#d62728', linewidth=2.5)
 
-    if not (is_one_way and "Y-Axis" in view_option):
-        ax_sec.annotate(f"L_n/4 = {top_cut_L*0.05:.2f} m", xy=(top_cut_L, y_top_line), xytext=(top_cut_L + 10, y_top_line + 4),
-                        arrowprops=dict(arrowstyle='->', color='#6c757d', connectionstyle='arc3,rad=0.2'))
+    # วาดเหล็กจุด (ตามแนวขวาง)
+    for x in x_dots:
+        # จุดล่าง
+        ax_sec.add_patch(plt.Circle((x, dot_bot_y), r_dot, color='#2ca02c', zorder=5))
+        # จุดบน (พิจารณาระยะหยุดเหล็ก)
+        if show_top_mid or (x <= top_cut_L or x >= span_w - top_cut_L):
+            ax_sec.add_patch(plt.Circle((x, dot_top_y), r_dot, color='#2ca02c', zorder=5))
+            
+    ax_sec.scatter([], [], color='#2ca02c', s=60, label=lbl_dot)
 
-    ax_sec.set_xlim(-beam_w - 15, span_w + beam_w + 25)
-    ax_sec.set_ylim(-15, t_cm + 15)
+    # 4. มิติบอกขนาด
+    ax_sec.annotate('', xy=(span_w + beam_w + 8, 0), xytext=(span_w + beam_w + 8, t_cm), arrowprops=dict(arrowstyle='<->', color='#212529'))
+    ax_sec.text(span_w + beam_w + 12, t_cm / 2, f"t = {t_cm} cm", va='center')
+    
+    if not show_top_mid:
+        ax_sec.annotate(f"L/4", xy=(top_cut_L, line_top_y), xytext=(top_cut_L + 10, line_top_y + 4), arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0.2'))
+
+    ax_sec.set_xlim(-beam_w - 10, span_w + beam_w + 30)
+    ax_sec.set_ylim(-5, t_cm + 10)
     ax_sec.axis('off')
-    ax_sec.legend(loc='upper center', bbox_to_anchor=(0.5, -0.02), ncol=3, frameon=True, shadow=True, facecolor='#f8f9fa')
+    ax_sec.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=3, frameon=False)
     st.pyplot(fig_sec)
 
-    st.divider()
-
-    # 7. บัญชีรายการประมาณการปริมาณวัสดุแยกประเภทพื้นเด็ดขาด (Dynamic Takeoff Table)
-    st.markdown("#### 📊 รายการคำนวณปริมาณวัสดุเบื้องต้น (Material Takeoff per $1\ m^2$)")
+    # 5. ตาราง Takeoff (ลดรูปให้เข้าใจง่ายขึ้น)
+    st.markdown("#### 📊 ปริมาณเหล็กเสริมต่อตารางเมตร (Estimate kg/m²)")
+    w_main = (int(''.join(filter(str.isdigit, main_bar))) ** 2) / 162.0
+    w_temp = (int(''.join(filter(str.isdigit, temp_bar))) ** 2) / 162.0
     
-    def get_bar_weight(bar_name):
-        size = int(''.join(filter(str.isdigit, bar_name)))
-        return (size ** 2) / 162.0
-
-    w_main = get_bar_weight(main_bar)
-    w_temp = get_bar_weight(temp_bar)
-
-    # คำนวณน้ำหนักเหล็กเสริมแยก Logic ระหว่าง One-Way และ Two-Way
-    kg_x_bot = (100 / s_xb) * w_main
-    kg_x_top = (100 / s_xt) * w_main * 0.5 
-    kg_y_bot = (100 / s_yb) * w_temp
+    kg_x = ((100/s_xb)*w_main) + ((100/s_xt)*w_main*0.5)
+    kg_y = ((100/s_yb)*w_temp) + ((100/s_yt)*w_temp*(1 if is_one_way else 0.5))
     
-    if is_one_way:
-        kg_y_top = (100 / s_yt) * w_temp # หนึ่งทาง: เหล็กกันร้าวบนวิ่งยาวเต็มแผ่น
-        total_steel_kg = kg_x_bot + kg_x_top + kg_y_bot + kg_y_top
-        
-        takeoff_data = {
-            "ตำแหน่งและลักษณะการดัด": ["เหล็กแกนหลักล่าง (X-Bot)", "เหล็กบนหัวคานหลัก (X-Top)", "เหล็กกันร้าวล่างทิศรอง (Y-Bot)", "เหล็กกันร้าวบนทิศรอง (Y-Top)"],
-            "สเปกการจัดวาง": [f"{main_bar} @ {s_xb:.1f} cm", f"{main_bar} @ {s_xt:.1f} cm", f"{temp_bar} @ {s_yb:.1f} cm", f"{temp_bar} @ {s_yt:.1f} cm"],
-            "น้ำหนักเหล็กโดยประมาณ": [f"{kg_x_bot:.2f} kg/m²", f"{kg_x_top:.2f} kg/m²", f"{kg_y_bot:.2f} kg/m²", f"{kg_y_top:.2f} kg/m²"],
-            "ระยะตัดเหล็กหน้าร้าน (Guide)": ["วิ่งยาวพาดเต็มช่วงคาน + งอปลายฉาก", f"ตัดยาวช่วงละ {span_w*0.25*0.02:.2f} m ยื่นจากคาน", "วิ่งยาวตลอดแนวเพื่อกันผิวคอนกรีตร้าว", "วิ่งยาวตลอดผิวบนเต็มผืนเพื่อสกัดร้าว"]
-        }
-    else:
-        kg_y_top = (100 / s_yt) * w_temp * 0.5 # สองทาง: เหล็กบนหักช่วง 1/4 ของคานรอง
-        total_steel_kg = kg_x_bot + kg_x_top + kg_y_bot + kg_y_top
-        
-        takeoff_data = {
-            "ตำแหน่งและลักษณะการดัด": ["เหล็กแกนหลักล่าง (X-Bot)", "เหล็กบนหัวคานหลัก (X-Top)", "เหล็กแกนหลักล่าง (Y-Bot)", "เหล็กบนหัวคานรอง (Y-Top)"],
-            "สเปกการจัดวาง": [f"{main_bar} @ {s_xb:.1f} cm", f"{main_bar} @ {s_xt:.1f} cm", f"{temp_bar} @ {s_yb:.1f} cm", f"{temp_bar} @ {s_yt:.1f} cm"],
-            "น้ำหนักเหล็กโดยประมาณ": [f"{kg_x_bot:.2f} kg/m²", f"{kg_x_top:.2f} kg/m²", f"{kg_y_bot:.2f} kg/m²", f"{kg_y_top:.2f} kg/m²"],
-            "ระยะตัดเหล็กหน้าร้าน (Guide)": ["วิ่งยาวพาดเต็มช่วงคานแกนสั้น", f"ตัดยาวช่วงละ {span_w*0.25*0.02:.2f} m ยื่นจากคาน X", "วิ่งยาวพาดเต็มช่วงคานแกนยาว", f"ตัดยาวช่วงละ {span_w*0.25*0.02:.2f} m ยื่นจากคาน Y"]
-        }
-
-    concrete_vol = (t_cm / 100) * 1.0 * 1.0 
-
-    col_t1, col_t2 = st.columns(2)
-    with col_t1:
-        st.info(f"**📦 ปริมาตรคอนกรีตที่ใช้:** `{concrete_vol:.3f} m³/m²`  \n*(ความหนาพื้นจริง {t_cm} cm)*")
-    with col_t2:
-        st.success(f"**⚖️ น้ำหนักเหล็กเสริมรวมเฉลี่ย:** `{total_steel_kg:.2f} kg/m²`  \n*(แยกสัดส่วนจัดเหล็กตามพฤติกรรม { 'One-Way' if is_one_way else 'Two-Way' } เปลือกเรียบร้อย)*")
-
-    st.table(pd.DataFrame(takeoff_data))
+    col1, col2 = st.columns(2)
+    col1.metric("น้ำหนักเหล็กแกน X", f"{kg_x:.2f} kg/m²")
+    col2.metric("น้ำหนักเหล็กแกน Y", f"{kg_y:.2f} kg/m²")
