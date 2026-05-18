@@ -275,17 +275,49 @@ with tab1:
             f"**🛠️ คำแนะนำสำหรับวิศวกร:** โปรดกลับไปที่แถบด้านซ้าย (Sidebar) แล้วปรับเพิ่มความหนาพื้น $t$ ให้มีค่าอย่างน้อย **{math.ceil(t_min_req):.1f} cm** หรือมากกว่า เพื่อให้โครงสร้างปลอดภัย"
         )
 
+
 with tab2:
-    fig_bar, ax_bar = plt.subplots(figsize=(10, 3.5))
-    m_labels = ['Mx+ (Mid X)', 'Mx- (Sup X)', 'My+ (Mid Y)', 'My- (Sup Y)']
-    m_vals = [M_x_pos, M_x_neg, M_y_pos, M_y_neg]
-    colors = ['#34495e'] * 4
-    if max(m_vals) > 0: colors[m_vals.index(max(m_vals))] = '#e74c3c'
-    bars = ax_bar.bar(m_labels, m_vals, color=colors, width=0.5)
-    ax_bar.bar_label(bars, fmt='%.1f kg-m', padding=5, weight='bold')
-    ax_bar.set_ylabel("Ultimate Moment, $M_u$ (kg-m)")
+    st.subheader("📈 แผนภูมิวิเคราะห์โมเมนต์ดัดวิกฤต (Bending Moment Diagram)")
+    
+    # 1. จัดเตรียมข้อมูลตามพฤติกรรมโครงสร้าง (Dynamic Data)
+    if is_one_way:
+        # ถ้าเป็นพื้นทางเดียว โชว์เฉพาะโมเมนต์หลักในแกน X
+        m_labels = ['Mx+ (Midspan X)', 'Mx- (Support X)']
+        m_vals = [M_x_pos, M_x_neg]
+        colors = ['#2980b9', '#c0392b']  # สีน้ำเงินแสดงเหล็กล่าง / สีแดงแสดงเหล็กบน
+    else:
+        # ถ้าเป็นพื้นสองทาง โชว์ครบทั้ง 4 ค่า แต่แยกโทนสีให้ดูง่ายตามลักษณะการรับแรง
+        m_labels = ['Mx+ (Mid X)', 'Mx- (Sup X)', 'My+ (Mid Y)', 'My- (Sup Y)']
+        m_vals = [M_x_pos, M_x_neg, M_y_pos, M_y_neg]
+        # โทนฟ้า/เขียว = โมเมนต์บวก (เหล็กล่าง) | โทนส้ม/แดง = โมเมนต์ลบ (เหล็กบน)
+        colors = ['#2980b9', '#e67e22', '#27ae60', '#d35400']
+    
+    # หากต้องการใช้ Logic ไฮไลต์ค่าสูงสุดเป็นสีแดงแบบเดิม (เปิดใช้งานบรรทัดข้างล่างนี้ได้ครับ)
+    # if max(m_vals) > 0: colors[m_vals.index(max(m_vals))] = '#e74c3c'
+
+    # 2. เริ่มสร้างกราฟ Matplotlib
+    fig_bar, ax_bar = plt.subplots(figsize=(10, 4))
+    ax_bar.set_facecolor('#f8f9fa')  # ปรับพื้นหลังกราฟให้อ่อนลง สบายตา
+    
+    # พล็อตแท่งกราฟพร้อมเส้นขอบคมๆ
+    bars = ax_bar.bar(m_labels, m_vals, color=colors, width=0.45, edgecolor='#2c3e50', linewidth=0.8)
+    
+    # 🛠️ ป้องกันตัวเลขหลุดขอบ: หาค่าสูงสุดแล้วคูณเผื่อเพดาน (Headroom) ไว้ 15%
+    max_headroom = max(m_vals) * 1.15 if max(m_vals) > 0 else 100
+    ax_bar.set_ylim(0, max_headroom)
+    
+    # แสดงตัวเลขบนหัวแท่งกราฟให้ชัดเจน
+    ax_bar.bar_label(bars, fmt='%.1f kg-m', padding=6, weight='bold', fontsize=10)
+    ax_bar.set_ylabel("Ultimate Moment, $M_u$ (kg-m)", fontsize=10, weight='bold')
+    
+    # ลบกรอบด้านบนและด้านขวาออกเพื่อให้กราฟดูโมเดิร์น สไตล์มินิมอล
     ax_bar.spines['top'].set_visible(False)
     ax_bar.spines['right'].set_visible(False)
+    ax_bar.spines['left'].set_color('#bdc3c7')
+    ax_bar.spines['bottom'].set_color('#bdc3c7')
+    
+    # จัดตำแหน่งองค์ประกอบอัตโนมัติไม่ให้ทับกัน
+    plt.tight_layout()
     st.pyplot(fig_bar)
 
 with tab3:
