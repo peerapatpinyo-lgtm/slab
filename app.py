@@ -244,10 +244,34 @@ tab1, tab2, tab3 = st.tabs([
 ])
 
 with tab1:
+    st.subheader("🔍 การตรวจสอบสภาวะการใช้งาน (Serviceability Check)")
+    
+    # 1. แสดงผลตัวเลขแบบสแกนสายตาง่ายด้วย Metric Columns
+    col_m1, col_m2, col_m3 = st.columns(3)
+    with col_m1:
+        st.metric(label="ความหนาที่ออกแบบไว้ (t)", value=f"{t_cm:.1.f} cm")
+    with col_m2:
+        st.metric(label="ความหนาขั้นต่ำตามโค้ด (t_min)", value=f"{t_min_req:.1f} cm", delta=f"{t_cm - t_min_req:.1f} cm", delta_color="normal" if deflection_passed else "inverse")
+    with col_m3:
+        status_text = "ผ่าน (PASS)" if deflection_passed else "ไม่ผ่าน (FAIL)"
+        st.metric(label="สถานะโครงสร้าง", value=status_text)
+
+    st.divider()
+
+    # 2. การแจ้งเตือนพร้อมคำแนะนำเชิงวิศวกรรม
     if deflection_passed:
-        st.success(f"**การตรวจสอบความหนา (Serviceability):** ผ่าน ✅ ใช้ {t_cm} cm (ต้องการขั้นต่ำ {t_min_req:.1f} cm)")
+        st.success(
+            f"**การตรวจสอบความหนาพื้น (Deflection Control): ผ่าน ✅**\n\n"
+            f"ความหนา $t = {t_cm}$ cm มากกว่าค่าขั้นต่ำตามมาตรฐาน ACI ({t_min_req:.1f} cm) "
+            f"แผ่นพื้นมีความแกร่ง (Stiffness) เพียงพอที่จะควบคุมการแอ่นตัวในระยะยาว (Long-term Deflection) "
+            f"โดยไม่ต้องคำนวณตรวจสอบค่าการโก่งตัวโดยละเอียด"
+        )
     else:
-        st.error(f"**การตรวจสอบความหนา (Serviceability):** ไม่ผ่าน ❌ เสี่ยงแอ่นตัว ต้องหนาอย่างน้อย {t_min_req:.1f} cm")
+        st.error(
+            f"**การตรวจสอบความหนาพื้น (Deflection Control): ไม่ผ่าน ❌**\n\n"
+            f"**เหตุผล:** ความหนาพื้นน้อยกว่าค่าขั้นต่ำที่ยอมรับได้ ({t_min_req:.1f} cm) เสี่ยงต่อการเกิดรอยร้าวและแผ่นพื้นแอ่นตัวมากเกินไปจนทำลายโครงสร้างสถาปัตยกรรม (เช่น ผนังก่ออิฐใต้พื้น)\n\n"
+            f"**🛠️ คำแนะนำสำหรับวิศวกร:** โปรดกลับไปที่แถบด้านซ้าย (Sidebar) แล้วปรับเพิ่มความหนาพื้น $t$ ให้มีค่าอย่างน้อย **{math.ceil(t_min_req):.1f} cm** หรือมากกว่า เพื่อให้โครงสร้างปลอดภัย"
+        )
 
 with tab2:
     fig_bar, ax_bar = plt.subplots(figsize=(10, 3.5))
