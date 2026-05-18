@@ -10,8 +10,13 @@ st.set_page_config(page_title="SlabMaster Pro V3 - Engineering Suite", layout="w
 st.title("🦅 SlabMaster Pro V3 (Ultimate Visual Engine)")
 st.caption("Commercial-Grade Reinforced Concrete Design Software | ACI 318-99 Method 3 Fully Compliant")
 
-# Set matplotlib style for clean engineering look
-plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available() else 'default')
+# Set matplotlib style for clean engineering look (FIXED)
+if 'seaborn-v0_8-whitegrid' in plt.style.available:
+    plt.style.use('seaborn-v0_8-whitegrid')
+elif 'ggplot' in plt.style.available:
+    plt.style.use('ggplot')
+else:
+    plt.style.use('default')
 
 # ==========================================
 # 2. CORE DATABASE (ACI METHOD 3)
@@ -39,17 +44,17 @@ def get_full_aci_method3_coeffs(case_num, m_ratio):
             return tuple(v1[j] + (v2[j] - v1[j]) * (m_ratio - r1) / (r2 - r1) for j in range(6))
     return selected_case[1.0]
 
-# Mapping boundaries: (Top, Bottom, Left, Right) - True means Continuous (Fixed over beam)
+# Mapping boundaries: (Top, Bottom, Left, Right) - True means Continuous
 case_boundaries = {
-    1: (True, True, True, True),     # Case 1
-    2: (False, False, False, False), # Case 2
-    3: (True, False, False, False),  # Case 3 (One Long Edge Cont. -> Assume Top)
-    4: (False, False, True, False),  # Case 4 (One Short Edge Cont. -> Assume Left)
-    5: (True, False, True, False),   # Case 5 (Two Adjacent -> Top + Left)
-    6: (True, True, False, False),   # Case 6 (Two Long Edges)
-    7: (False, False, True, True),   # Case 7 (Two Short Edges)
-    8: (True, True, True, False),    # Case 8 (Three Continuous, Right Short edge free)
-    9: (True, False, True, True)     # Case 9 (Three Continuous, Bottom Long edge free)
+    1: (True, True, True, True),
+    2: (False, False, False, False),
+    3: (True, False, False, False),
+    4: (False, False, True, False),
+    5: (True, False, True, False),
+    6: (True, True, False, False),
+    7: (False, False, True, True),
+    8: (True, True, True, False),
+    9: (True, False, True, True)
 }
 
 # ==========================================
@@ -104,25 +109,22 @@ with col_sel:
     st.metric(label="ระบบจำแนกประเภทพื้นพิจารณาอัตโนมัติ:", value=slab_type_str, delta=f"อัตราส่วนมิติสปัน m = {m_ratio:.3f}")
 
 with col_gfx:
-    # Plotting Live Boundary Diagram
     bounds = case_boundaries[case_selected]
     fig_plan, ax_plan = plt.subplots(figsize=(4.5, 3.8))
     
-    # Draw Slab Area Base
     ax_plan.add_patch(plt.Rectangle((0.1, 0.1), 0.8, 0.8, facecolor='#f1f2f6', edgecolor='none'))
     ax_plan.text(0.5, 0.5, f"SLAB PANEL\n{Lx:.1f}m x {Ly:.1f}m", ha='center', va='center', weight='bold', color='#2f3542')
     
-    # Draw borders depending on continuity settings
-    # Top Edge
+    # Border Logic
     ax_plan.plot([0.1, 0.9], [0.9, 0.9], color='#ff4757' if bounds[0] else '#a4b0be', linewidth=5 if bounds[0] else 2, linestyle='-' if bounds[0] else '--')
     ax_plan.text(0.5, 0.93, "Continuous" if bounds[0] else "Discontinuous (Free)", ha='center', fontsize=8, color='#ff4757' if bounds[0] else '#747d8c')
-    # Bottom Edge
+    
     ax_plan.plot([0.1, 0.9], [0.1, 0.1], color='#ff4757' if bounds[1] else '#a4b0be', linewidth=5 if bounds[1] else 2, linestyle='-' if bounds[1] else '--')
     ax_plan.text(0.5, 0.03, "Continuous" if bounds[1] else "Discontinuous (Free)", ha='center', fontsize=8, color='#ff4757' if bounds[1] else '#747d8c')
-    # Left Edge
+    
     ax_plan.plot([0.1, 0.1], [0.1, 0.9], color='#ff4757' if bounds[2] else '#a4b0be', linewidth=5 if bounds[2] else 2, linestyle='-' if bounds[2] else '--')
     ax_plan.text(0.02, 0.5, "Continuous" if bounds[2] else "Free", va='center', rotation=90, fontsize=8, color='#ff4757' if bounds[2] else '#747d8c')
-    # Right Edge
+    
     ax_plan.plot([0.9, 0.9], [0.1, 0.9], color='#ff4757' if bounds[3] else '#a4b0be', linewidth=5 if bounds[3] else 2, linestyle='-' if bounds[3] else '--')
     ax_plan.text(0.95, 0.5, "Continuous" if bounds[3] else "Free", va='center', rotation=-90, fontsize=8, color='#ff4757' if bounds[3] else '#747d8c')
     
@@ -166,11 +168,9 @@ else:
         M_y_neg = cy_n * (total_structural_dl + UDL_LL) * (Lx ** 2)
     V_u = (w_u * Lx) / 3
 
-# Deflection Bounds Check
 t_min_req = (Lx / 24) * (0.4 + fy/7000) * 100 if is_one_way else (2 * (Lx + Ly) / 180) * 100
 deflection_passed = t_cm >= t_min_req
 
-# Sectional Area Requirements Engine
 main_bar = st.selectbox("เลือกขนาดเส้นผ่านศูนย์กลางเหล็กแกนที่ใช้ (mm):", [9, 12, 16], index=1)
 ab = (math.pi / 4) * ((main_bar / 10) ** 2)
 d = t_cm - covering_cm - (main_bar / 20)
@@ -193,17 +193,14 @@ As_xt_req = max(compute_exact_as(M_x_neg, d, fc_prime, fy, method), As_min)
 As_yb_req = max(compute_exact_as(M_y_pos, d, fc_prime, fy, method), As_min) if not is_one_way else As_min
 As_yt_req = max(compute_exact_as(M_y_neg, d, fc_prime, fy, method), As_min) if (not is_one_way and M_y_neg > 0) else 0.0
 
-# Dynamic Auto-Spacing Suggestion Generator (If manual spacing fails)
-def get_max_safe_spacing(as_required, bar_area):
-    if as_required <= 0: return 25.0
-    calc_s = (bar_area / as_required) * 100
-    # Code requirement limit max spacing to 3t or 45cm
-    return min(floor_to_half_cm(calc_s), 3 * t_cm, 45.0)
-
 def floor_to_half_cm(val):
     return math.floor(val * 2) / 2
 
-# Input spacing layout
+def get_max_safe_spacing(as_required, bar_area):
+    if as_required <= 0: return 25.0
+    calc_s = (bar_area / as_required) * 100
+    return min(floor_to_half_cm(calc_s), 3 * t_cm, 45.0)
+
 st.markdown("### 🎛️ ปรับแต่งระยะห่างเหล็กหน้างาน (Construction Pitch Control)")
 c1, c2, c3, c4 = st.columns(4)
 with c1: 
@@ -224,7 +221,6 @@ As_xt_prov = (ab / s_xt) * 100
 As_yb_prov = (ab / s_yb) * 100
 As_yt_prov = (ab / s_yt) * 100 if s_yt > 0 else 0.0
 
-# Quantities Core Logic Block
 concrete_volume = slab_area * t
 weight_m = (math.pi / 4) * ((main_bar / 1000) ** 2) * 7850
 steel_len_x = (100 / s_xb * Lx) + (100 / s_xt * Lx * 0.5) 
@@ -247,7 +243,6 @@ tab1, tab2, tab3, tab4 = st.tabs([
 
 with tab1:
     st.subheader("Structural Integrity Check & Smart Recommendations")
-    
     thick_status = "🟢 Passed" if deflection_passed else f"🔴 หนาไม่พอ! ACI บังคับขั้นต่ำ {t_min_req:.1f} cm"
     status_xb = "🟢 Passed" if As_xb_prov >= As_xb_req else f"🔴 เหล็กขาด! แนะนำปรับระยะห่างเป็น @ ≤ {s_xb_max} cm"
     status_xt = "🟢 Passed" if As_xt_prov >= As_xt_req else f"🔴 เหล็กขาด! แนะนำปรับระยะห่างเป็น @ ≤ {s_xt_max} cm"
@@ -263,8 +258,6 @@ with tab1:
 
 with tab2:
     st.subheader("Bending Moment Internal Forces Graph")
-    
-    # Render Bar Chart comparing real design forces
     fig_mom, ax_mom = plt.subplots(figsize=(10, 3.5))
     moments_labels = ['Mx+ (Midspan X)', 'Mx- (Support X)', 'My+ (Midspan Y)', 'My- (Support Y)']
     moments_values = [M_x_pos, M_x_neg, M_y_pos, M_y_neg]
