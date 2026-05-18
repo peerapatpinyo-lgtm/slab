@@ -158,15 +158,16 @@ with col_b1:
     d_main_mm = int(main_bar.replace("DB", ""))
     ab_main = (math.pi / 4) * ((d_main_mm / 10) ** 2)
 with col_b2:
-    temp_bar = st.selectbox("ขนาดเหล็กกันร้าว (ทิศ Y)", ["RB9", "DB10", "DB12"], index=0)
+    temp_bar = st.selectbox("ขนาดเหล็กกันร้าว/เหล็กทิศ Y", ["RB9", "DB10", "DB12"], index=0)
     d_temp_mm = int(temp_bar.replace("RB", "").replace("DB", ""))
     ab_temp = (math.pi / 4) * ((d_temp_mm / 10) ** 2)
 
+# คำนวณความลึกประสิทธิผลตาม True Layering Sequence ของตะแกรงเหล็กล่าง
 d_x = t_cm - covering_cm - (d_main_mm / 10 / 2)
 d_y = d_x - (d_main_mm / 10 / 2) - (d_temp_mm / 10 / 2)
 
 # ==========================================
-# 6. STRUCTURAL ANALYTICAL ENGINE
+# 6. STRUCTURAL ANALYTICAL ENGINE (RECHECKED)
 # ==========================================
 slab_self_weight = (t_cm / 100) * 2400
 total_dl = slab_self_weight + UDL_SDL
@@ -197,25 +198,27 @@ def compute_exact_as(M, d_eff, fc, fy_g):
     if inside_sqrt < 0: return -1.0
     return (0.85 * fc / fy_g) * (1.0 - math.sqrt(inside_sqrt)) * 100 * d_eff
 
+# คำนวณปริมาณเหล็กเสริมขั้นต่ำตามมาตรฐานสากล
 As_min_main = (0.0018 if fy_main >= 4000 else 0.0020) * 100 * t_cm
 As_temp_req = (0.0018 if fy_temp >= 4000 else 0.0020) * 100 * t_cm
 
+# RECHECK: คำนวณ As โดยแยกเกรดกำลังเหล็ก (fy) ของเหล็กแกนหลักและแกนรองให้ถูกต้องแม่นยำ
 as_xb_calc = compute_exact_as(M_x_pos, d_x, fc_prime, fy_main)
 as_xt_calc = compute_exact_as(M_x_neg, d_x, fc_prime, fy_main)
-as_yb_calc = compute_exact_as(M_y_pos, d_y, fc_prime, fy_main) if not is_one_way else As_temp_req
-as_yt_calc = compute_exact_as(M_y_neg, d_y, fc_prime, fy_main) if not is_one_way and M_y_neg > 0 else 0.0
+as_yb_calc = compute_exact_as(M_y_pos, d_y, fc_prime, fy_temp) if not is_one_way else As_temp_req
+as_yt_calc = compute_exact_as(M_y_neg, d_y, fc_prime, fy_temp) if (not is_one_way and M_y_neg > 0) else 0.0
 
 if any(val == -1.0 for val in [as_xb_calc, as_xt_calc, as_yb_calc, as_yt_calc]):
-    st.error("🚨 **CRITICAL ERROR: พื้นบางเกินไป! (Compression Failure)**")
+    st.error("🚨 **CRITICAL ERROR: พื้นบางเกินไป! หน้าตัดคอนกรีตไม่สามารถรับแรงอัดได้ (Compression Failure)**")
     st.stop()
 
 As_xb_req = max(as_xb_calc, As_min_main)
 As_xt_req = max(as_xt_calc, As_min_main)
 As_yb_req = max(as_yb_calc, As_min_main) if not is_one_way else As_temp_req
-As_yt_req = max(as_yt_calc, As_min_main) if not is_one_way and M_y_neg > 0 else 0.0
+As_yt_req = max(as_yt_calc, As_min_main) if (not is_one_way and M_y_neg > 0) else 0.0
 
 # ==========================================
-# 7. SMART REBAR DETAILING
+# 7. SMART REBAR DETAILING (RECHECKED SYNCHRONIZATION)
 # ==========================================
 s_xb_rec = get_practical_spacing(As_xb_req, ab_main, t=t_cm)
 s_xt_rec = get_practical_spacing(As_xt_req, ab_main, t=t_cm)
@@ -226,7 +229,13 @@ sc1, sc2, sc3, sc4 = st.columns(4)
 s_xb = sc1.number_input(f"X-Bottom (@ cm)", min_value=5.0, value=s_xb_rec, step=2.5)
 s_xt = sc2.number_input(f"X-Top (@ cm)", min_value=5.0, value=s_xt_rec, step=2.5)
 s_yb = sc3.number_input(f"Y-Bottom (@ cm)", min_value=5.0, value=s_yb_rec, step=2.5)
-s_yt = sc4.number_input(f"Y-Top (@ cm)", min_value=5.0, value=s_yt_rec, step=2.5)
+s_yt_input = sc4.number_input(f"Y-Top (@ cm)", min_value=5.0, value=s_yt_rec, step=2.5)
+
+# RECHECK LOGIC: จัดการซิงโครไนซ์ตัวแปรเหล็กแกน Y สำหรับพื้นทางเดียวทันที เพื่อป้องกันตารางคำนวณแสดงค่าขัดแย้งกัน
+if is_one_way:
+    s_yt = s_yb  # พื้นทางเดียว เหล็กกันร้าวบน-ล่าง วิ่งระยะเท่ากันเต็มแผ่นผืน
+else:
+    s_yt = s_yt_input
 
 As_xb_prov = (ab_main / s_xb) * 100
 As_xt_prov = (ab_main / s_xt) * 100
@@ -234,19 +243,18 @@ As_yb_prov = (ab_temp / s_yb) * 100
 As_yt_prov = (ab_temp / s_yt) * 100 if s_yt > 0 else 0.0
 
 # ==========================================
-# 8. DASHBOARDS & CALCULATION SHEET (UPDATED V7)
+# 8. DASHBOARDS & CALCULATION SHEET
 # ==========================================
 st.divider()
 
-tab1, tab2, tab3, tab4 = st.tabs(["🚦 แดชบอร์ดตรวจสอบกำลัง", "📈 กราฟพฤติกรรมโครงสร้าง", "📑 รายการคำนวณวิศวกรรม (Detailed)", "📋 แบบขยายหน้าตัดพื้น"])
+tab1, tab2, tab3, tab4 = st.tabs(["🚦 แดชบอร์ดตรวจสอบกำลัง", "📈 กราฟพฤติกรรมโครงสร้าง", "📑 รายการคำนวณวิศวกรรม (Detailed)", "📋 แบบขยายหน้าตัดพื้นและประมาณการ"])
 
 with tab1:
     st.subheader("🔍 การตรวจสอบสภาวะการใช้งาน (Serviceability Check)")
     
-    # แก้ไขจุดพ่น Error เรียบร้อยแล้วจาก :.1.f เป็น :.1f
     col_m1, col_m2, col_m3 = st.columns(3)
     with col_m1:
-        st.metric(label="ความหนาที่ออกแบบไว้ (t)", value=f"{t_cm:.1f} cm") # แก้ตรงนี้ครับ
+        st.metric(label="ความหนาที่ออกแบบไว้ (t)", value=f"{t_cm:.1f} cm")
     with col_m2:
         st.metric(label="ความหนาขั้นต่ำตามโค้ด (t_min)", value=f"{t_min_req:.1f} cm", 
                   delta=f"{t_cm - t_min_req:.1f} cm", 
@@ -257,7 +265,6 @@ with tab1:
 
     st.divider()
 
-    # การแจ้งเตือนพร้อมคำแนะนำเชิงวิศวกรรม
     if deflection_passed:
         st.success(
             f"**การตรวจสอบความหนาพื้น (Deflection Control): ผ่าน ✅**\n\n"
@@ -268,52 +275,38 @@ with tab1:
     else:
         st.error(
             f"**การตรวจสอบความหนาพื้น (Deflection Control): ไม่ผ่าน ❌**\n\n"
-            f"**เหตุผล:** ความหนาพื้นน้อยกว่าค่าขั้นต่ำที่ยอมรับได้ ({t_min_req:.1f} cm) เสี่ยงต่อการเกิดรอยร้าวและแผ่นพื้นแอ่นตัวมากเกินไปจนทำลายโครงสร้างสถาปัตยกรรม (เช่น ผนังก่ออิฐใต้พื้น)\n\n"
+            f"**เหตุผล:** ความหนาพื้นน้อยกว่าค่าขั้นต่ำที่ยอมรับได้ ({t_min_req:.1f} cm) เสี่ยงต่อการเกิดรอยร้าวและแผ่นพื้นแอ่นตัวมากเกินไปจนทำลายโครงสร้างสถาปัตยกรรม\n\n"
             f"**🛠️ คำแนะนำสำหรับวิศวกร:** โปรดกลับไปที่แถบด้านซ้าย (Sidebar) แล้วปรับเพิ่มความหนาพื้น $t$ ให้มีค่าอย่างน้อย **{math.ceil(t_min_req):.1f} cm** หรือมากกว่า เพื่อให้โครงสร้างปลอดภัย"
         )
-
 
 with tab2:
     st.subheader("📈 แผนภูมิวิเคราะห์โมเมนต์ดัดวิกฤต (Bending Moment Diagram)")
     
-    # 1. จัดเตรียมข้อมูลตามพฤติกรรมโครงสร้าง (Dynamic Data)
     if is_one_way:
-        # ถ้าเป็นพื้นทางเดียว โชว์เฉพาะโมเมนต์หลักในแกน X
         m_labels = ['Mx+ (Midspan X)', 'Mx- (Support X)']
         m_vals = [M_x_pos, M_x_neg]
-        colors = ['#2980b9', '#c0392b']  # สีน้ำเงินแสดงเหล็กล่าง / สีแดงแสดงเหล็กบน
+        colors = ['#2980b9', '#c0392b']  
     else:
-        # ถ้าเป็นพื้นสองทาง โชว์ครบทั้ง 4 ค่า แต่แยกโทนสีให้ดูง่ายตามลักษณะการรับแรง
         m_labels = ['Mx+ (Mid X)', 'Mx- (Sup X)', 'My+ (Mid Y)', 'My- (Sup Y)']
         m_vals = [M_x_pos, M_x_neg, M_y_pos, M_y_neg]
-        # โทนฟ้า/เขียว = โมเมนต์บวก (เหล็กล่าง) | โทนส้ม/แดง = โมเมนต์ลบ (เหล็กบน)
         colors = ['#2980b9', '#e67e22', '#27ae60', '#d35400']
     
-    # หากต้องการใช้ Logic ไฮไลต์ค่าสูงสุดเป็นสีแดงแบบเดิม (เปิดใช้งานบรรทัดข้างล่างนี้ได้ครับ)
-    # if max(m_vals) > 0: colors[m_vals.index(max(m_vals))] = '#e74c3c'
-
-    # 2. เริ่มสร้างกราฟ Matplotlib
     fig_bar, ax_bar = plt.subplots(figsize=(10, 4))
-    ax_bar.set_facecolor('#f8f9fa')  # ปรับพื้นหลังกราฟให้อ่อนลง สบายตา
+    ax_bar.set_facecolor('#f8f9fa')
     
-    # พล็อตแท่งกราฟพร้อมเส้นขอบคมๆ
     bars = ax_bar.bar(m_labels, m_vals, color=colors, width=0.45, edgecolor='#2c3e50', linewidth=0.8)
     
-    # 🛠️ ป้องกันตัวเลขหลุดขอบ: หาค่าสูงสุดแล้วคูณเผื่อเพดาน (Headroom) ไว้ 15%
     max_headroom = max(m_vals) * 1.15 if max(m_vals) > 0 else 100
     ax_bar.set_ylim(0, max_headroom)
     
-    # แสดงตัวเลขบนหัวแท่งกราฟให้ชัดเจน
     ax_bar.bar_label(bars, fmt='%.1f kg-m', padding=6, weight='bold', fontsize=10)
     ax_bar.set_ylabel("Ultimate Moment, $M_u$ (kg-m)", fontsize=10, weight='bold')
     
-    # ลบกรอบด้านบนและด้านขวาออกเพื่อให้กราฟดูโมเดิร์น สไตล์มินิมอล
     ax_bar.spines['top'].set_visible(False)
     ax_bar.spines['right'].set_visible(False)
     ax_bar.spines['left'].set_color('#bdc3c7')
     ax_bar.spines['bottom'].set_color('#bdc3c7')
     
-    # จัดตำแหน่งองค์ประกอบอัตโนมัติไม่ให้ทับกัน
     plt.tight_layout()
     st.pyplot(fig_bar)
 
@@ -344,7 +337,7 @@ with tab3:
         st.markdown("ใช้สมการโมเมนต์สำหรับพื้นทางเดียว (เสมือนคานต่อเนื่อง):")
         st.latex(f"M_{{x+}} = \\frac{{W_u L_x^2}}{{11}} = \\frac{{{w_u:.2f} \\times {Lx}^2}}{{11}} = {M_x_pos:.2f}\\ kg-m")
         st.latex(f"M_{{x-}} = \\frac{{W_u L_x^2}}{{10}} = \\frac{{{w_u:.2f} \\times {Lx}^2}}{{10}} = {M_x_neg:.2f}\\ kg-m")
-        st.markdown("*แกน Y ไม่เกิดโมเมนต์ดัดหลัก เสริมเพียงเหล็กกันร้าว (Temperature Steel)*")
+        st.markdown("*แกน Y ไม่เกิดโมเมนต์ดัดหลัก เสริมเพียงเหล็กกันร้าวต้านการยืดหดตัว (Temperature Steel)*")
     else:
         st.markdown("ใช้ตารางสัมประสิทธิ์ ACI Method 3 (สำหรับพื้นสองทาง):")
         st.latex(r"M_x = C_{x} \cdot W \cdot L_x^2 \quad , \quad M_y = C_{y} \cdot W \cdot L_x^2")
@@ -353,92 +346,59 @@ with tab3:
         st.latex(f"M_{{y+}} = (1.2({cy_p_dl:.3f})W_d + 1.6({cy_p_ll:.3f})W_l) \\times {Lx}^2 = {M_y_pos:.2f}\\ kg-m")
         st.latex(f"M_{{y-}} = (1.2({cy_n:.3f})W_d + 1.6({cy_n:.3f})W_l) \\times {Lx}^2 = {M_y_neg:.2f}\\ kg-m")
 
-    st.markdown("#### 5. การคำนวณปริมาณเหล็กเสริม (Steel Area - Strength Design)")
+    st.markdown("#### 5. การคำนวณปริมาณเหล็กเสริมและการผ่านเกณฑ์มาตรฐาน")
     st.latex(r"R_n = \frac{M_u}{\phi b d^2}, \quad \rho = \frac{0.85 f_c'}{f_y} \left(1 - \sqrt{1 - \frac{2 R_n}{0.85 f_c'}}\right)")
     
     calc_df = pd.DataFrame({
-        "ตำแหน่ง": ["Midspan X (Mx+)", "Support X (Mx-)", "Midspan Y (My+)", "Support Y (My-)"],
+        "ตำแหน่งการเสริมเหล็ก": ["เหล็กแกนหลักล่าง ทิศ X (Mx+)", "เหล็กแกนหลักบน ทิศ X (Mx-)", "เหล็กด้านล่าง ทิศ Y (My+)", "เหล็กด้านบน ทิศ Y (My-)"],
         "Moment (kg-m)": [f"{M_x_pos:.1f}", f"{M_x_neg:.1f}", f"{M_y_pos:.1f}", f"{M_y_neg:.1f}"],
         "As Req (cm²/m)": [f"{As_xb_req:.2f}", f"{As_xt_req:.2f}", f"{As_yb_req:.2f}", f"{As_yt_req:.2f}"],
-        "As Prov (cm²/m)": [f"{As_xb_prov:.2f}", f"{As_xt_prov:.2f}", f"{As_yb_prov:.2f}", f"{As_yt_prov:.2f}"],
-        "สถานะ": ["OK" if As_xb_prov >= As_xb_req else "FAIL", "OK" if As_xt_prov >= As_xt_req else "FAIL", 
-                  "OK" if As_yb_prov >= As_yb_req else "FAIL", "OK" if As_yt_prov >= As_yt_req or (is_one_way and M_y_neg==0) else "FAIL"]
+        "As Provided (cm²/m)": [f"{As_xb_prov:.2f}", f"{As_xt_prov:.2f}", f"{As_yb_prov:.2f}", f"{As_yt_prov:.2f}"],
+        "ผลการประเมิน": [
+            "OK" if As_xb_prov >= As_xb_req else "FAIL", 
+            "OK" if As_xt_prov >= As_xt_req else "FAIL", 
+            "OK" if As_yb_prov >= As_yb_req else "FAIL", 
+            "OK" if (As_yt_prov >= As_yt_req or (is_one_way and M_y_neg == 0)) else "FAIL"
+        ]
     })
     st.table(calc_df)
 
-# แก้ไขบรรทัดสัญกรณ์แท็บเดิม ให้เพิ่ม "📋 แบบขยายหน้าตัดพื้น" เข้าไป
-
 with tab4:
-    st.subheader("📋 แบบขยายรายละเอียดการเสริมเหล็กและปริมาณวัสดุ (Structural Detailing & Takeoff)")
-    st.markdown("แบบขยายหน้าตัดสัดส่วนจริง (True Scale) แสดงการซ้อนเลเยอร์ของเหล็กเสริมแยกตามพฤติกรรมโครงสร้างอย่างถูกต้อง")
+    st.subheader("📋 แบบขยายรายละเอียดการเสริมเหล็ก (Structural Detailing)")
+    st.markdown("แบบขยายหน้าตัดสัดส่วนจริง (True Scale) แสดงการซ้อนเลเยอร์ของเหล็กเสริมแยกตามพฤติกรรมอย่างถูกต้อง")
 
-    # ==========================================
-    # 1. RECHECK & INITIALIZE VARIABLES (ป้องกัน Error 100%)
-    # ==========================================
-    # ดึงขนาดเส้นผ่านศูนย์กลางเหล็กจากชื่อ (เช่น 'DB12' -> 12, 'RB9' -> 9)
-    try:
-        d_x_mm = float(''.join(filter(str.isdigit, str(main_bar))))
-    except:
-        d_x_mm = 12.0
-        
-    try:
-        d_y_mm = float(''.join(filter(str.isdigit, str(temp_bar))))
-    except:
-        d_y_mm = 9.0
-
-    # คำนวณน้ำหนักเหล็กต่อเมตรตามสูตรมาตรฐาน (D^2 / 162)
-    w_x = (d_x_mm ** 2) / 162.0
-    w_y = (d_y_mm ** 2) / 162.0
-
-    # จัดการ Logic ระยะห่างเหล็กกรณี One-Way Slab (แกน Y ไม่มีโมเมนต์ดัดลบ)
-    if is_one_way:
-        # ในพื้นทางเดียว แกน Y คือเหล็กกันร้าว (Temperature Steel) วิ่งยาวตลอดแผ่นทั้งบนและล่าง
-        actual_s_yb = s_yb
-        actual_s_yt = s_yb  # บังคับให้เหล็กบนแกน Y ถี่เท่าเหล็กกันร้าวล่างตามมาตรฐาน
-    else:
-        actual_s_yb = s_yb
-        actual_s_yt = s_yt if 's_yt' in locals() or 's_yt' in globals() else s_yb
-
-    # Selector สำหรับเลือกมุมมองหน้าตัด
     view_option = st.radio(
-        "🔄 เลือกมุมมองหน้าตัดสถาปัตยกรรม/วิศวกรรม:",
-        ["Section A-A: ตัดตามแนวแกนสั้น X (เห็นเหล็ก X เป็นเส้นยาว)", "Section B-B: ตัดตามแนวแกนยาว Y (เห็นเหล็ก Y เป็นเส้นยาว)"],
+        "🔄 เลือกมุมมองตัด (Section View):",
+        ["Section A-A (ตัดตามแนว X - เห็นเหล็ก X เป็นเส้นยาว)", "Section B-B (ตัดตามแนว Y - เห็นเหล็ก Y เป็นเส้นยาว)"],
         horizontal=True
     )
 
-    # ==========================================
-    # 2. DRAWING GENERATION (MATPLOTLIB TRUE SCALE)
-    # ==========================================
     fig_sec, ax_sec = plt.subplots(figsize=(12, 5.5))
     ax_sec.set_facecolor('#ffffff')
     
-    span_w = 120.0       # ความกว้างแผ่นพื้นที่แสดงในแบบ (cm)
-    beam_w = 20.0        # ความกว้างคาน (cm)
-    h_beam = t_cm + 25.0 # ความลึกคานใต้ท้องพื้น
+    span_w = 120.0       
+    beam_w = 20.0        
+    h_beam = t_cm + 22.0 
     
-    # วาดเนื้อคอนกรีตคานและแผ่นพื้น
-    ax_sec.add_patch(plt.Rectangle((-beam_w, t_cm - h_beam), beam_w, h_beam, facecolor='#ecf0f1', edgecolor='#34495e', linewidth=1.5, hatch='///'))
-    ax_sec.add_patch(plt.Rectangle((span_w, t_cm - h_beam), beam_w, h_beam, facecolor='#ecf0f1', edgecolor='#34495e', linewidth=1.5, hatch='///'))
-    ax_sec.add_patch(plt.Rectangle((0, 0), span_w, t_cm, facecolor='#f8f9fa', edgecolor='#34495e', linewidth=1.5, hatch='...'))
+    # วาดคอนกรีตพื้นและคานรองรับหัวท้าย
+    ax_sec.add_patch(plt.Rectangle((-beam_w, t_cm - h_beam), beam_w, h_beam, facecolor='#f1f3f5', edgecolor='#34495e', linewidth=1.5))
+    ax_sec.add_patch(plt.Rectangle((span_w, t_cm - h_beam), beam_w, h_beam, facecolor='#f1f3f5', edgecolor='#34495e', linewidth=1.5))
+    ax_sec.add_patch(plt.Rectangle((0, 0), span_w, t_cm, facecolor='#f8f9fa', edgecolor='#34495e', linewidth=1.5))
 
-    # คำนวณพิกัดระดับความลึกของเหล็กเสริม (True Layering Sequence)
-    r_x = (d_x_mm / 10) / 2  # รัศมีเหล็ก X (cm)
-    r_y = (d_y_mm / 10) / 2  # รัศมีเหล็ก Y (cm)
+    r_main = (d_main_mm / 10) / 2
+    r_temp = (d_temp_mm / 10) / 2
 
-    # ระดับเหล็กตะแกรงล่าง (Bottom Mat): แกน X อยู่ล่างสุดเพื่อรับแรงดึงหลัก (d_x มากสุด)
-    y_x_bot = covering_cm + r_x
-    y_y_bot = covering_cm + (2 * r_x) + r_y  # เหล็ก Y วางซ้อนอยู่บนเหล็ก X
+    # กำหนดพิกัด Y ของเหล็กแต่ละเลเยอร์ (Shop Drawing Layering)
+    y_x_bot = covering_cm + r_main                                  
+    y_y_bot = covering_cm + (2 * r_main) + r_temp                   
     
-    # ระดับเหล็กตะแกรงบน (Top Mat): แกน X อยู่บนสุดเพื่อรับโมเมนต์ลบที่หัวคานสูงสุด
-    y_x_top = t_cm - covering_cm - r_x
-    y_y_top = t_cm - covering_cm - (2 * r_x) - r_y  # เหล็ก Y สอดอยู่ใต้เหล็ก X
+    y_x_top = t_cm - covering_cm - r_main                           
+    y_y_top = t_cm - covering_cm - (2 * r_main) - r_temp            
 
     dot_spacing = 15.0
     x_dots = [5 + i * dot_spacing for i in range(int(span_w/dot_spacing) + 1)]
-
-    # แยกพฤติกรรมการวาดเส้นเหล็กตามหน้าตัดที่เลือก
+    
     if "Section A-A" in view_option:
-        # --- หน้าตัดตัดตามแนว X ---
         line_bot_y = y_x_bot
         line_top_y = y_x_top
         dot_bot_y = y_y_bot
@@ -446,125 +406,82 @@ with tab4:
         
         lbl_line_bot = f"Main X Bot: {main_bar} @ {s_xb:.1f} cm"
         lbl_line_top = f"Main X Top: {main_bar} @ {s_xt:.1f} cm"
-        lbl_dot = f"Cross Y: {temp_bar} @ {actual_s_yb:.1f} cm (เหล็กขวาง)"
+        lbl_dot = f"Cross Y: {temp_bar} @ {s_yb:.1f} cm"
         
-        r_dot = r_y
-        top_cut_L = span_w * 0.25 # เหล็กบนแกน X ต้องตัดระยะ L/4 เสมอ
-        continuous_top_line = False
+        r_dot = r_temp
+        top_cut_L = span_w * 0.25 
+        show_top_mid = False
     else:
-        # --- หน้าตัดตัดตามแนว Y ---
         line_bot_y = y_y_bot
         line_top_y = y_y_top
         dot_bot_y = y_x_bot
         dot_top_y = y_x_top
         
-        lbl_dot = f"Cross X: {main_bar} @ {s_xb:.1f} cm (เหล็กขวาง)"
-        r_dot = r_x
+        lbl_dot = f"Cross X: {main_bar} @ {s_xb:.1f} cm (จุด)"
+        r_dot = r_main
         
         if is_one_way:
-            # กรณีพื้นทางเดียว: แกน Y คือเหล็กกันร้าว วิ่งยาวตลอดช่วงพาด ไม่มีการตัดเศษ L/4
-            lbl_line_bot = f"Temp Y Bot: {temp_bar} @ {actual_s_yb:.1f} cm"
-            lbl_line_top = f"Temp Y Top: {temp_bar} @ {actual_s_yt:.1f} cm"
-            top_cut_L = span_w
-            continuous_top_line = True
+            lbl_line_bot = f"Temp Y Bot: {temp_bar} @ {s_yb:.1f} cm (วิ่งยาว)"
+            lbl_line_top = f"Temp Y Top: {temp_bar} @ {s_yt:.1f} cm (วิ่งยาว)"
+            top_cut_L = span_w 
+            show_top_mid = True
         else:
-            # กรณีพื้นสองทาง: แกน Y คือเหล็กโครงสร้างหลักชิ้นที่สอง ตัดระยะ L/4
-            lbl_line_bot = f"Main Y Bot: {temp_bar} @ {actual_s_yb:.1f} cm"
-            lbl_line_top = f"Main Y Top: {temp_bar} @ {actual_s_yt:.1f} cm"
-            top_cut_L = span_w * 0.25
-            continuous_top_line = False
+            lbl_line_bot = f"Main Y Bot: {temp_bar} @ {s_yb:.1f} cm"
+            lbl_line_top = f"Main Y Top: {temp_bar} @ {s_yt:.1f} cm"
+            top_cut_L = span_w * 0.25 
+            show_top_mid = False
 
-    # วาดเหล็กเส้นยาว (แนวนอน)
-    # เหล็กล่าง (วิ่งยาวงอฉากลงคานทั้งสองฝั่ง)
-    ax_sec.plot([-beam_w + 4, span_w + beam_w - 4], [line_bot_y, line_bot_y], color='#1a73e8', linewidth=2.8, zorder=4, label=lbl_line_bot)
-    ax_sec.plot([-beam_w + 4, -beam_w + 4], [line_bot_y, line_bot_y + 4], color='#1a73e8', linewidth=2.8, zorder=4)
-    ax_sec.plot([span_w + beam_w - 4, span_w + beam_w - 4], [line_bot_y, line_bot_y + 4], color='#1a73e8', linewidth=2.8, zorder=4)
+    # วาดเหล็กเส้นยาวนอน
+    ax_sec.plot([-beam_w + 5, span_w + beam_w - 5], [line_bot_y, line_bot_y], color='#1a73e8', linewidth=2.8, zorder=4, label=lbl_line_bot)
+    ax_sec.plot([-beam_w + 5, -beam_w + 5], [line_bot_y, line_bot_y + 4], color='#1a73e8', linewidth=2.8, zorder=4) 
+    ax_sec.plot([span_w + beam_w - 5, span_w + beam_w - 5], [line_bot_y, line_bot_y + 4], color='#1a73e8', linewidth=2.8, zorder=4)
     
-    # เหล็กบน
-    if continuous_top_line:
-        # วาดวิ่งยาวตลอดแนว (สำหรับเหล็กกันร้าวบนของ One-Way แกน Y)
-        ax_sec.plot([-beam_w + 4, span_w + beam_w - 4], [line_top_y, line_top_y], color='#d93025', linewidth=2.8, zorder=4, label=lbl_line_top)
+    if show_top_mid:
+        ax_sec.plot([-beam_w + 5, span_w + beam_w - 5], [line_top_y, line_top_y], color='#d93025', linewidth=2.8, zorder=4, label=lbl_line_top)
     else:
-        # วาดหักจบที่ระยะ L/4 (สำหรับเหล็กรับโมเมนต์ลบปกติ)
-        ax_sec.plot([-beam_w + 4, top_cut_L], [line_top_y, line_top_y], color='#d93025', linewidth=2.8, zorder=4, label=lbl_line_top)
-        ax_sec.plot([span_w - top_cut_L, span_w + beam_w - 4], [line_top_y, line_top_y], color='#d93025', linewidth=2.8, zorder=4)
-    # วาดงอฉากเหล็กบนลงในเนื้อคาน
-    ax_sec.plot([-beam_w + 4, -beam_w + 4], [line_top_y, line_top_y - 5], color='#d93025', linewidth=2.8, zorder=4)
-    ax_sec.plot([span_w + beam_w - 4, span_w + beam_w - 4], [line_top_y, line_top_y - 5], color='#d93025', linewidth=2.8, zorder=4)
+        ax_sec.plot([-beam_w + 5, top_cut_L], [line_top_y, line_top_y], color='#d93025', linewidth=2.8, zorder=4, label=lbl_line_top)
+        ax_sec.plot([span_w - top_cut_L, span_w + beam_w - 5], [line_top_y, line_top_y], color='#d93025', linewidth=2.8, zorder=4)
+    ax_sec.plot([-beam_w + 5, -beam_w + 5], [line_top_y, line_top_y - 5], color='#d93025', linewidth=2.8, zorder=4) 
+    ax_sec.plot([span_w + beam_w - 5, span_w + beam_w - 5], [line_top_y, line_top_y - 5], color='#d93025', linewidth=2.8, zorder=4)
 
-    # วาดเหล็กจุดวงกลม (Cross Bars)
+    # วาดจุดวงกลมตัดขวาง
     for x in x_dots:
-        # จุดตะแกรงล่าง
         ax_sec.add_patch(plt.Circle((x, dot_bot_y), r_dot, color='#1e7e34', zorder=5))
-        # จุดตะแกรงบน (พิจารณาระยะตามการตัดเหล็กบน)
-        if continuous_top_line or (x <= top_cut_L or x >= span_w - top_cut_L):
+        if show_top_mid or (x <= top_cut_L or x >= span_w - top_cut_L):
             ax_sec.add_patch(plt.Circle((x, dot_top_y), r_dot, color='#1e7e34', zorder=5))
             
-    ax_sec.scatter([], [], color='#1e7e34', s=55, label=lbl_dot)
+    ax_sec.scatter([], [], color='#1e7e34', s=60, label=lbl_dot)
 
-    # มิติเส้นบอกขนาดในแบบขยาย
-    ax_sec.annotate('', xy=(span_w + beam_w + 8, 0), xytext=(span_w + beam_w + 8, t_cm), arrowprops=dict(arrowstyle='<->', color='#212529', linewidth=1.2))
-    ax_sec.text(span_w + beam_w + 12, t_cm / 2, f"t = {t_cm} cm", va='center', ha='left', weight='bold', color='#212529')
+    # วาดมิติเส้นบอกขนาด
+    ax_sec.annotate('', xy=(span_w + beam_w + 8, 0), xytext=(span_w + beam_w + 8, t_cm), arrowprops=dict(arrowstyle='<->', color='#212529'))
+    ax_sec.text(span_w + beam_w + 12, t_cm / 2, f"t = {t_cm} cm", va='center', weight='bold')
     
-    # เส้นบอกระยะหุ้ม (Covering)
-    ax_sec.annotate('', xy=(-7, 0), xytext=(-7, covering_cm), arrowprops=dict(arrowstyle='<->', color='#7f8c8d', linewidth=0.8))
-    ax_sec.text(-9, covering_cm / 2, f"Cover {covering_cm} cm", va='center', ha='right', fontsize=9, color='#6c757d')
-
-    if not continuous_top_line:
-        ax_sec.annotate(f"L_n/4 = {top_cut_L*0.01:.2f} m", xy=(top_cut_L, line_top_y), xytext=(top_cut_L + 8, line_top_y + 3),
+    if not show_top_mid:
+        ax_sec.annotate(f"L/4 = {top_cut_L*0.01:.2f} m", xy=(top_cut_L, line_top_y), xytext=(top_cut_L + 8, line_top_y + 3), 
                         arrowprops=dict(arrowstyle='->', color='#7f8c8d', connectionstyle='arc3,rad=0.15'))
 
-    ax_sec.set_xlim(-beam_w - 15, span_w + beam_w + 35)
-    ax_sec.set_ylim(-12, t_cm + 12)
+    ax_sec.set_xlim(-beam_w - 12, span_w + beam_w + 35)
+    ax_sec.set_ylim(-10, t_cm + 12)
     ax_sec.axis('off')
-    ax_sec.legend(loc='upper center', bbox_to_anchor=(0.5, -0.06), ncol=3, frameon=True, shadow=True, facecolor='#f8f9fa')
+    ax_sec.legend(loc='upper center', bbox_to_anchor=(0.5, -0.06), ncol=3, frameon=True, facecolor='#f8f9fa')
     st.pyplot(fig_sec)
 
+    # 5. RECHECKED MATERIAL TAKEOFF (ตารางประมาณการวัสดุแม่นยำสูง)
     st.divider()
-
-    # ==========================================
-    # 3. RECHECKED MATERIAL TAKEOFF (สูตรน้ำหนักจริงคำนวณแยกตามแผ่นพื้น)
-    # ==========================================
-    st.markdown("#### 📊 รายการสรุปและประมาณการวัสดุโครงสร้างจริง (Material Takeoff per $1\ m^2$)")
+    st.markdown("#### 📊 ปริมาณเหล็กเสริมและคอนกรีตสุทธิต่อตารางเมตร (Estimate Material Takeoff per $1\\ m^2$)")
     
-    # คิดน้ำหนักเหล็กแกน X (คิดแบบเฉลี่ยพื้นที่ 1 ตร.ม. จริง โดยเหล็กบนคิดสัมประสิทธิ์ระยะหยุด L/4 สองฝั่ง = 0.5)
-    kg_x_bot = (100 / s_xb) * w_x
-    kg_x_top = (100 / s_xt) * w_x * 0.5
-    total_kg_x = kg_x_bot + kg_x_top
-
-    # คิดน้ำหนักเหล็กแกน Y ตามประเภทพฤติกรรมจริง
-    kg_y_bot = (100 / actual_s_yb) * w_y
-    if is_one_way:
-        # พื้นทางเดียว เหล็กกันร้าวบนวิ่งเต็ม 100% สองชั้น
-        kg_y_top = (100 / actual_s_yt) * w_y * 1.0
-    else:
-        # พื้นสองทาง เหล็กบนแกน Y ตัดหักจบที่ระยะ L/4 เหมือนแกน X
-        kg_y_top = (100 / actual_s_yt) * w_y * 0.5
-    total_kg_y = kg_y_bot + kg_y_top
-
-    total_steel_slab = total_kg_x + total_kg_y
-    concrete_vol_m2 = (t_cm / 100) * 1.0 * 1.0
-
-    # แสดงผล Metric Summary
-    col_v1, col_v2, col_v3 = st.columns(3)
-    col_v1.metric("ปริมาตรคอนกรีตพื้น", f"{concrete_vol_m2:.3f} m³/m²")
-    col_v2.metric("น้ำหนักเหล็กเสริมรวม", f"{total_steel_slab:.2f} kg/m²")
-    col_v3.metric("ประเภทพื้นในการจัดเหล็ก", "One-Way Slab" if is_one_way else "Two-Way Slab")
-
-    # ตารางจัดรายการเหล็กดัดส่งโรงงาน (Bar Cutting Table Guide)
-    if is_one_way:
-        takeoff_table_data = {
-            "กลุ่มเหล็กเสริม": ["เหล็กแกนหลักล่าง (X-Bot)", "เหล็กบนหัวคานหลัก (X-Top)", "เหล็กกันร้าวล่าง (Y-Bot)", "เหล็กกันร้าวบน (Y-Top)"],
-            "ข้อกำหนดการจัดวางจริง": [f"{main_bar} @ {s_xb:.1f} cm", f"{main_bar} @ {s_xt:.1f} cm", f"{temp_bar} @ {actual_s_yb:.1f} cm", f"{temp_bar} @ {actual_s_yt:.1f} cm"],
-            "น้ำหนักสุทธิเฉลี่ย": [f"{kg_x_bot:.2f} kg/m²", f"{kg_x_top:.2f} kg/m²", f"{kg_y_bot:.2f} kg/m²", f"{kg_y_top:.2f} kg/m²"],
-            "แนวทางการดัดหน้างาน": ["วิ่งยาวพาดเต็มช่วงคานสั้น + งอปากฉากเข้าคาน 10 cm", "ตัดแยกชิ้นยาวรองรับโมเมนต์ลบ ยื่นออกมาระยะ L/4 จากขอบคาน", "วางตัดขวางพาดบนเหล็กหลัก วิ่งยาวตลอดผืนแผ่นพื้น", "วางใต้เหล็กบนแกน X วิ่งยาวตลอดผืนแผ่นพื้นเพื่อต้านการแตกร้าวผิว"]
-        }
-    else:
-        takeoff_table_data = {
-            "กลุ่มเหล็กเสริม": ["เหล็กแกนหลัก X ด้านล่าง", "เหล็กเสริมลบ X หัวคาน", "เหล็กแกนหลัก Y ด้านล่าง", "เหล็กเสริมลบ Y หัวคาน"],
-            "ข้อกำหนดการจัดวางจริง": [f"{main_bar} @ {s_xb:.1f} cm", f"{main_bar} @ {s_xt:.1f} cm", f"{temp_bar} @ {actual_s_yb:.1f} cm", f"{temp_bar} @ {actual_s_yt:.1f} cm"],
-            "น้ำหนักสุทธิเฉลี่ย": [f"{kg_x_bot:.2f} kg/m²", f"{kg_x_top:.2f} kg/m²", f"{kg_y_bot:.2f} kg/m²", f"{kg_y_top:.2f} kg/m²"],
-            "แนวทางการดัดหน้างาน": ["วางแนวล่างสุดพาดคานแกนสั้น + ดัดงอเข้าคาน", "ตัดแยกชิ้นพาดหลังคาน ยื่นเข้าหาศูนย์กลางพื้นระยะ L/4", "วางหนุนอยู่บนเหล็กแกน X พาดคานแกนยาวตลอดแนว", "สอดใต้เหล็กบนแกน X ยื่นออกจากขอบคานแกนยาวระยะ L/4"]
-        }
-
-    st.table(pd.DataFrame(takeoff_table_data))
+    w_main = (int(''.join(filter(str.isdigit, main_bar))) ** 2) / 162.0
+    w_temp = (int(''.join(filter(str.isdigit, temp_bar))) ** 2) / 162.0
+    
+    # ถอดน้ำหนักเฉลี่ยตามจริง (เหล็กบนคิดสัมประสิทธิ์พื้นที่ความยาวกระจาย 0.5 สำหรับระยะตัดขาด L/4 สองฝั่งคาน)
+    kg_x = ((100 / s_xb) * w_main) + ((100 / s_xt) * w_main * 0.5)
+    kg_y = ((100 / s_yb) * w_temp) + ((100 / s_yt) * w_temp * (1.0 if is_one_way else 0.5))
+    total_steel = kg_x + kg_y
+    concrete_vol = (t_cm / 100) * 1.0 * 1.0
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("น้ำหนักเหล็กแกน X", f"{kg_x:.2f} kg/m²")
+    col2.metric("น้ำหนักเหล็กแกน Y", f"{kg_y:.2f} kg/m²")
+    col3.metric("ปริมาตรคอนกรีตพื้น", f"{concrete_vol:.3f} m³/m²")
+    
+    st.info(f"💡 **รวมน้ำหนักเหล็กเสริมตะแกรงแผ่นพื้นทั้งหมดสุทธิ:** {total_steel:.2f} kg ต่อตารางเมตร")
