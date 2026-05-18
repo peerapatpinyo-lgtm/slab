@@ -292,12 +292,14 @@ with tab3:
         st.markdown("*แกน Y ไม่เกิดโมเมนต์ดัดหลัก เสริมเพียงเหล็กกันร้าว (Temperature Steel)*")
     else:
         st.markdown("ใช้ตารางสัมประสิทธิ์ ACI Method 3 (สำหรับพื้นสองทาง):")
-        st.latex(M_x = C_{x} \cdot W \cdot L_x^2 \quad , \quad M_y = C_{y} \cdot W \cdot L_x^2)
+        st.latex(r"M_x = C_{x} \cdot W \cdot L_x^2 \quad , \quad M_y = C_{y} \cdot W \cdot L_x^2")
         st.latex(f"M_{{x+}} = (1.2({cx_p_dl:.3f})W_d + 1.6({cx_p_ll:.3f})W_l) \\times {Lx}^2 = {M_x_pos:.2f}\\ kg-m")
         st.latex(f"M_{{x-}} = (1.2({cx_n:.3f})W_d + 1.6({cx_n:.3f})W_l) \\times {Lx}^2 = {M_x_neg:.2f}\\ kg-m")
+        st.latex(f"M_{{y+}} = (1.2({cy_p_dl:.3f})W_d + 1.6({cy_p_ll:.3f})W_l) \\times {Lx}^2 = {M_y_pos:.2f}\\ kg-m")
+        st.latex(f"M_{{y-}} = (1.2({cy_n:.3f})W_d + 1.6({cy_n:.3f})W_l) \\times {Lx}^2 = {M_y_neg:.2f}\\ kg-m")
 
     st.markdown("#### 5. การคำนวณปริมาณเหล็กเสริม (Steel Area - Strength Design)")
-    st.latex(R"R_n = \frac{M_u}{\phi b d^2}, \quad \rho = \frac{0.85 f_c'}{f_y} \left(1 - \sqrt{1 - \frac{2 R_n}{0.85 f_c'}}\right)")
+    st.latex(r"R_n = \frac{M_u}{\phi b d^2}, \quad \rho = \frac{0.85 f_c'}{f_y} \left(1 - \sqrt{1 - \frac{2 R_n}{0.85 f_c'}}\right)")
     
     calc_df = pd.DataFrame({
         "ตำแหน่ง": ["Midspan X (Mx+)", "Support X (Mx-)", "Midspan Y (My+)", "Support Y (My-)"],
@@ -308,3 +310,4 @@ with tab3:
                   "OK" if As_yb_prov >= As_yb_req else "FAIL", "OK" if As_yt_prov >= As_yt_req or (is_one_way and M_y_neg==0) else "FAIL"]
     })
     st.table(calc_df)
+   
