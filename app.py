@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # ==========================================
 # 1. PAGE CONFIGURATION & THEME
 # ==========================================
-st.set_page_config(page_title="SlabMaster Pro V7 - Detail Calculation", layout="wide")
+st.set_page_config(page_title="SlabMaster Pro V7 - Detailed Calculation", layout="wide")
 
 if 'seaborn-v0_8-whitegrid' in plt.style.available:
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -14,7 +14,7 @@ else:
     plt.style.use('default')
 
 st.title("🏗️ SlabMaster Pro V7 (Detailed Calculation Edition)")
-st.markdown("**เครื่องมือวิเคราะห์และออกแบบแผ่นพื้นคอนกรีตเสริมเหล็ก (RC Slab Design)** | ความละเอียดสูง อ้างอิง ACI 318")
+st.markdown("**Reinforced Concrete (RC) Slab Analysis & Design Tool** | High Resolution, based on ACI 318")
 st.divider()
 
 # ==========================================
@@ -68,31 +68,31 @@ def get_practical_spacing(as_req, bar_area, is_temp=False, t=15.0):
 with st.sidebar:
     st.header("⚙️ Design Parameters")
     
-    with st.expander("📐 1. มิติแผ่นพื้น (Geometry)", expanded=True):
-        input_Lx = st.number_input("ความกว้าง Lx (m)", min_value=1.0, value=4.0, step=0.1)
-        input_Ly = st.number_input("ความยาว Ly (m)", min_value=1.0, value=5.0, step=0.1)
+    with st.expander("📐 1. Slab Geometry", expanded=True):
+        input_Lx = st.number_input("Width Lx (m)", min_value=1.0, value=4.0, step=0.1)
+        input_Ly = st.number_input("Length Ly (m)", min_value=1.0, value=5.0, step=0.1)
         
         Lx = min(input_Lx, input_Ly)
         Ly = max(input_Lx, input_Ly)
         if input_Lx > input_Ly:
-            st.warning(f"⚠️ สลับค่า Lx={Lx}m และ Ly={Ly}m อัตโนมัติ (Lx ต้องเป็นด้านสั้น)")
+            st.warning(f"⚠️ Automatically swapped Lx={Lx}m and Ly={Ly}m (Lx must be the shorter span)")
             
-        t_cm = st.slider("ความหนาพื้น t (cm)", min_value=8.0, max_value=35.0, value=15.0, step=0.5)
-        covering_cm = st.slider("ระยะหุ้ม Cover (cm)", min_value=1.5, max_value=5.0, value=2.0, step=0.5)
+        t_cm = st.slider("Slab Thickness t (cm)", min_value=8.0, max_value=35.0, value=15.0, step=0.5)
+        covering_cm = st.slider("Concrete Covering (cm)", min_value=1.5, max_value=5.0, value=2.0, step=0.5)
 
-    with st.expander("🛠️ 2. คุณสมบัติวัสดุ (Materials)", expanded=True):
-        fc_prime = st.number_input("กำลังอัดคอนกรีต fc' (ksc)", min_value=150, value=280, step=10)
-        fy_main = st.selectbox("เหล็กรับแรงหลัก (Main)", [("SD40 (4000 ksc)", 4000), ("SD50 (5000 ksc)", 5000)], index=0)[1]
-        fy_temp = st.selectbox("เหล็กกันร้าว (Temp)", [("SR24 (2400 ksc)", 2400), ("SD40 (4000 ksc)", 4000)], index=0)[1]
+    with st.expander("🛠️ 2. Material Properties", expanded=True):
+        fc_prime = st.number_input("Concrete Compressive Strength fc' (ksc)", min_value=150, value=280, step=10)
+        fy_main = st.selectbox("Main Reinforcement Steel", [("SD40 (4000 ksc)", 4000), ("SD50 (5000 ksc)", 5000)], index=0)[1]
+        fy_temp = st.selectbox("Temperature/Shrinkage Steel", [("SR24 (2400 ksc)", 2400), ("SD40 (4000 ksc)", 4000)], index=0)[1]
 
-    with st.expander("⚖️ 3. น้ำหนักบรรทุก (Loads)", expanded=True):
-        UDL_SDL = st.number_input("น้ำหนักทับหลัง SDL (kg/m²)", min_value=0, value=150)
-        ll_preset = st.selectbox("หมวดหมู่การใช้งาน (Live Load)", [
-            "ที่พักอาศัย / ห้องนอน (150 kg/m²)", "สำนักงาน / อาคารพาณิชย์ (250 kg/m²)",
-            "ทางเดิน / บันได (300 kg/m²)", "ห้างสรรพสินค้า (400 kg/m²)", "กำหนดเอง (Custom)"
+    with st.expander("⚖️ 3. Loads", expanded=True):
+        UDL_SDL = st.number_input("Superimposed Dead Load SDL (kg/m²)", min_value=0, value=150)
+        ll_preset = st.selectbox("Occupancy Category (Live Load)", [
+            "Residential / Bedroom (150 kg/m²)", "Office / Commercial (250 kg/m²)",
+            "Corridor / Stairs (300 kg/m²)", "Shopping Mall (400 kg/m²)", "Custom"
         ])
-        if ll_preset == "กำหนดเอง (Custom)":
-            UDL_LL = st.number_input("น้ำหนักจร (kg/m²)", min_value=0, value=250)
+        if ll_preset == "Custom":
+            UDL_LL = st.number_input("Live Load (kg/m²)", min_value=0, value=250)
         else:
             UDL_LL = int(ll_preset.split("(")[1].split(" ")[0])
 
@@ -102,24 +102,24 @@ with st.sidebar:
 col_setup, col_blueprint = st.columns([1.3, 1])
 
 with col_setup:
-    st.subheader("📍 ผังการต่อเนื่อง (Boundary Conditions)")
-    case_idx = st.selectbox("เลือกรูปแบบจุดรองรับ (ACI Cases):", [
-        "Case 1: พื้นภายใน (ต่อเนื่อง 4 ด้าน)", "Case 2: พื้นเดี่ยว (ไม่ต่อเนื่อง 4 ด้าน)",
-        "Case 3: ต่อเนื่องด้านยาว 1 ด้าน", "Case 4: ต่อเนื่องด้านสั้น 1 ด้าน",
-        "Case 5: ต่อเนื่อง 2 ด้านติดกัน (พื้นมุม)", "Case 6: ต่อเนื่องด้านยาว 2 ด้าน",
-        "Case 7: ต่อเนื่องด้านสั้น 2 ด้าน", "Case 8: ต่อเนื่อง 3 ด้าน (ด้านสั้นอิสระ)",
-        "Case 9: ต่อเนื่อง 3 ด้าน (ด้านยาวอิสระ)"
+    st.subheader("📍 Boundary Conditions")
+    case_idx = st.selectbox("Select Support Conditions (ACI Cases):", [
+        "Case 1: Interior panel (Continuous on 4 sides)", "Case 2: Single panel (Discontinuous on 4 sides)",
+        "Case 3: Continuous on 1 long edge", "Case 4: Continuous on 1 short edge",
+        "Case 5: Continuous on 2 adjacent edges (Corner panel)", "Case 6: Continuous on 2 long edges",
+        "Case 7: Continuous on 2 short edges", "Case 8: Continuous on 3 edges (1 short edge discontinuous)",
+        "Case 9: Continuous on 3 edges (1 long edge discontinuous)"
     ])
     case_selected = int(case_idx.split(":")[0].split(" ")[1])
     
     m_ratio = Lx / Ly if Ly > 0 else 0
     is_one_way = m_ratio < 0.5
     
-    st.metric(label="อัตราส่วนมิติ (m = Lx/Ly)", value=f"{m_ratio:.3f}")
+    st.metric(label="Dimension Ratio (m = Lx/Ly)", value=f"{m_ratio:.3f}")
     if is_one_way:
-        st.warning("**พฤติกรรมโครงสร้าง:** พื้นทางเดียว (One-Way Slab)")
+        st.warning("**Structural Behavior:** One-Way Slab")
     else:
-        st.success("**พฤติกรรมโครงสร้าง:** พื้นสองทาง (Two-Way Slab)")
+        st.success("**Structural Behavior:** Two-Way Slab")
 
 with col_blueprint:
     bounds = case_boundaries[case_selected]
@@ -150,19 +150,19 @@ with col_blueprint:
 # 5. REBAR SIZES & EXACT EFFECTIVE DEPTH (d)
 # ==========================================
 st.divider()
-st.subheader("🛠️ ขนาดเหล็กและหน้าตัดวิกฤต (Section Capacity)")
+st.subheader("🛠️ Rebar Sizes & Critical Section (Section Capacity)")
 
 col_b1, col_b2 = st.columns(2)
 with col_b1:
-    main_bar = st.selectbox("ขนาดเหล็กรับแรงหลัก (ทิศ X)", ["DB10", "DB12", "DB16"], index=1)
+    main_bar = st.selectbox("Main Rebar Size (X-Direction)", ["DB10", "DB12", "DB16"], index=1)
     d_main_mm = int(main_bar.replace("DB", ""))
     ab_main = (math.pi / 4) * ((d_main_mm / 10) ** 2)
 with col_b2:
-    temp_bar = st.selectbox("ขนาดเหล็กกันร้าว/เหล็กทิศ Y", ["RB9", "DB10", "DB12"], index=0)
+    temp_bar = st.selectbox("Temperature/Y-Direction Rebar Size", ["RB9", "DB10", "DB12"], index=0)
     d_temp_mm = int(temp_bar.replace("RB", "").replace("DB", ""))
     ab_temp = (math.pi / 4) * ((d_temp_mm / 10) ** 2)
 
-# คำนวณความลึกประสิทธิผลตาม True Layering Sequence ของตะแกรงเหล็กล่าง
+# Calculate effective depth based on True Layering Sequence of bottom steel mesh
 d_x = t_cm - covering_cm - (d_main_mm / 10 / 2)
 d_y = d_x - (d_main_mm / 10 / 2) - (d_temp_mm / 10 / 2)
 
@@ -198,18 +198,18 @@ def compute_exact_as(M, d_eff, fc, fy_g):
     if inside_sqrt < 0: return -1.0
     return (0.85 * fc / fy_g) * (1.0 - math.sqrt(inside_sqrt)) * 100 * d_eff
 
-# คำนวณปริมาณเหล็กเสริมขั้นต่ำตามมาตรฐานสากล
+# Calculate minimum reinforcement area according to international standards
 As_min_main = (0.0018 if fy_main >= 4000 else 0.0020) * 100 * t_cm
 As_temp_req = (0.0018 if fy_temp >= 4000 else 0.0020) * 100 * t_cm
 
-# RECHECK: คำนวณ As โดยแยกเกรดกำลังเหล็ก (fy) ของเหล็กแกนหลักและแกนรองให้ถูกต้องแม่นยำ
+# RECHECK: Calculate As by separately and accurately applying the yield strength (fy) of main and secondary steel
 as_xb_calc = compute_exact_as(M_x_pos, d_x, fc_prime, fy_main)
 as_xt_calc = compute_exact_as(M_x_neg, d_x, fc_prime, fy_main)
 as_yb_calc = compute_exact_as(M_y_pos, d_y, fc_prime, fy_temp) if not is_one_way else As_temp_req
 as_yt_calc = compute_exact_as(M_y_neg, d_y, fc_prime, fy_temp) if (not is_one_way and M_y_neg > 0) else 0.0
 
 if any(val == -1.0 for val in [as_xb_calc, as_xt_calc, as_yb_calc, as_yt_calc]):
-    st.error("🚨 **CRITICAL ERROR: พื้นบางเกินไป! หน้าตัดคอนกรีตไม่สามารถรับแรงอัดได้ (Compression Failure)**")
+    st.error("🚨 **CRITICAL ERROR: Slab is too thin! Concrete section fails in compression (Compression Failure)**")
     st.stop()
 
 As_xb_req = max(as_xb_calc, As_min_main)
@@ -231,9 +231,9 @@ s_xt = sc2.number_input(f"X-Top (@ cm)", min_value=5.0, value=s_xt_rec, step=2.5
 s_yb = sc3.number_input(f"Y-Bottom (@ cm)", min_value=5.0, value=s_yb_rec, step=2.5)
 s_yt_input = sc4.number_input(f"Y-Top (@ cm)", min_value=5.0, value=s_yt_rec, step=2.5)
 
-# RECHECK LOGIC: จัดการซิงโครไนซ์ตัวแปรเหล็กแกน Y สำหรับพื้นทางเดียวทันที เพื่อป้องกันตารางคำนวณแสดงค่าขัดแย้งกัน
+# RECHECK LOGIC: Synchronize Y-axis steel variables for one-way slabs immediately to prevent calculation tables from showing conflicting values
 if is_one_way:
-    s_yt = s_yb  # พื้นทางเดียว เหล็กกันร้าวบน-ล่าง วิ่งระยะเท่ากันเต็มแผ่นผืน
+    s_yt = s_yb  # One-way slab: top and bottom temperature steel runs at the same spacing across the entire panel
 else:
     s_yt = s_yt_input
 
@@ -247,40 +247,40 @@ As_yt_prov = (ab_temp / s_yt) * 100 if s_yt > 0 else 0.0
 # ==========================================
 st.divider()
 
-tab1, tab2, tab3, tab4 = st.tabs(["🚦 แดชบอร์ดตรวจสอบกำลัง", "📈 กราฟพฤติกรรมโครงสร้าง", "📑 รายการคำนวณวิศวกรรม (Detailed)", "📋 แบบขยายหน้าตัดพื้นและประมาณการ"])
+tab1, tab2, tab3, tab4 = st.tabs(["🚦 Capacity Check Dashboard", "📈 Structural Behavior Graph", "📑 Engineering Calculation Sheet (Detailed)", "📋 Slab Cross-Section Detailing & Estimation"])
 
 with tab1:
-    st.subheader("🔍 การตรวจสอบสภาวะการใช้งาน (Serviceability Check)")
+    st.subheader("🔍 Serviceability Check")
     
     col_m1, col_m2, col_m3 = st.columns(3)
     with col_m1:
-        st.metric(label="ความหนาที่ออกแบบไว้ (t)", value=f"{t_cm:.1f} cm")
+        st.metric(label="Designed Thickness (t)", value=f"{t_cm:.1f} cm")
     with col_m2:
-        st.metric(label="ความหนาขั้นต่ำตามโค้ด (t_min)", value=f"{t_min_req:.1f} cm", 
+        st.metric(label="Minimum Code Thickness (t_min)", value=f"{t_min_req:.1f} cm", 
                   delta=f"{t_cm - t_min_req:.1f} cm", 
                   delta_color="normal" if deflection_passed else "inverse")
     with col_m3:
-        status_text = "ผ่าน (PASS)" if deflection_passed else "ไม่ผ่าน (FAIL)"
-        st.metric(label="สถานะโครงสร้าง", value=status_text)
+        status_text = "PASS" if deflection_passed else "FAIL"
+        st.metric(label="Structural Status", value=status_text)
 
     st.divider()
 
     if deflection_passed:
         st.success(
-            f"**การตรวจสอบความหนาพื้น (Deflection Control): ผ่าน ✅**\n\n"
-            f"ความหนา $t = {t_cm}$ cm มากกว่าค่าขั้นต่ำตามมาตรฐาน ACI ({t_min_req:.1f} cm) "
-            f"แผ่นพื้นมีความแกร่ง (Stiffness) เพียงพอที่จะควบคุมการแอ่นตัวในระยะยาว (Long-term Deflection) "
-            f"โดยไม่ต้องคำนวณตรวจสอบค่าการโก่งตัวโดยละเอียด"
+            f"**Thickness Check (Deflection Control): PASS ✅**\n\n"
+            f"Thickness $t = {t_cm}$ cm is greater than the ACI minimum requirement ({t_min_req:.1f} cm). "
+            f"The slab has sufficient stiffness to control long-term deflection "
+            f"without requiring detailed deflection calculations."
         )
     else:
         st.error(
-            f"**การตรวจสอบความหนาพื้น (Deflection Control): ไม่ผ่าน ❌**\n\n"
-            f"**เหตุผล:** ความหนาพื้นน้อยกว่าค่าขั้นต่ำที่ยอมรับได้ ({t_min_req:.1f} cm) เสี่ยงต่อการเกิดรอยร้าวและแผ่นพื้นแอ่นตัวมากเกินไปจนทำลายโครงสร้างสถาปัตยกรรม\n\n"
-            f"**🛠️ คำแนะนำสำหรับวิศวกร:** โปรดกลับไปที่แถบด้านซ้าย (Sidebar) แล้วปรับเพิ่มความหนาพื้น $t$ ให้มีค่าอย่างน้อย **{math.ceil(t_min_req):.1f} cm** หรือมากกว่า เพื่อให้โครงสร้างปลอดภัย"
+            f"**Thickness Check (Deflection Control): FAIL ❌**\n\n"
+            f"**Reason:** Slab thickness is less than the minimum acceptable value ({t_min_req:.1f} cm). It is at risk of cracking and excessive deflection which could damage architectural elements.\n\n"
+            f"**🛠️ Recommendation for Engineer:** Please return to the left Sidebar and increase the slab thickness $t$ to at least **{math.ceil(t_min_req):.1f} cm** or more to ensure structural safety."
         )
 
 with tab2:
-    st.subheader("📈 แผนภูมิวิเคราะห์โมเมนต์ดัดวิกฤต (Bending Moment Diagram)")
+    st.subheader("📈 Critical Bending Moment Diagram")
     
     if is_one_way:
         m_labels = ['Mx+ (Midspan X)', 'Mx- (Support X)']
@@ -311,50 +311,50 @@ with tab2:
     st.pyplot(fig_bar)
 
 with tab3:
-    st.markdown("### 📑 รายการคำนวณวิศวกรรม (Structural Calculation Sheet)")
+    st.markdown("### 📑 Structural Calculation Sheet")
     
-    st.markdown("#### 1. การตรวจสอบพฤติกรรมแผ่นพื้น (Slab Behavior)")
+    st.markdown("#### 1. Slab Behavior Check")
     st.latex(f"m = \\frac{{L_x}}{{L_y}} = \\frac{{{Lx}}}{{{Ly}}} = {m_ratio:.3f}")
     if is_one_way:
-        st.info(f"เนื่องจาก $m < 0.5$ แผ่นพื้นมีพฤติกรรมเป็น **พื้นทางเดียว (One-Way Slab)** ดัดตัวเสมือนคานกว้าง")
+        st.info(f"Since $m < 0.5$, the slab behaves as a **One-Way Slab**, bending like a wide beam.")
     else:
-        st.success(f"เนื่องจาก $m \\ge 0.5$ แผ่นพื้นมีพฤติกรรมเป็น **พื้นสองทาง (Two-Way Slab)** ถ่ายแรงทั้งสองแกน")
+        st.success(f"Since $m \\ge 0.5$, the slab behaves as a **Two-Way Slab**, distributing loads along both axes.")
 
-    st.markdown("#### 2. การวิเคราะห์น้ำหนักบรรทุก (Load Analysis)")
+    st.markdown("#### 2. Load Analysis")
     st.latex(f"Dead\\ Load\\ (W_d) = (\\frac{{{t_cm}}}{{100}} \\times 2400) + {UDL_SDL} = {total_dl:.2f}\\ kg/m^2")
     st.latex(f"Ultimate\\ Load\\ (W_u) = 1.2(W_d) + 1.6(L_L) = 1.2({total_dl:.2f}) + 1.6({UDL_LL}) = {w_u:.2f}\\ kg/m^2")
     
-    st.markdown("#### 3. การตรวจสอบความหนาขั้นต่ำ (Minimum Thickness for Deflection)")
+    st.markdown("#### 3. Minimum Thickness for Deflection")
     if is_one_way:
         st.latex(f"t_{{min}} = \\frac{{L_x}}{{24}} \\left(0.4 + \\frac{{f_y}}{{7000}}\\right) = \\frac{{{Lx*100:.0f}}}{{24}} \\left(0.4 + \\frac{{{fy_main}}}{{7000}}\\right) = {t_min_req:.2f}\\ cm")
     else:
         st.latex(f"t_{{min}} = \\frac{{2(L_x + L_y)}}{{180}} = \\frac{{2({Lx*100:.0f} + {Ly*100:.0f})}}{{180}} = {t_min_req:.2f}\\ cm")
-    st.markdown(f"**สรุป:** เลือกใช้ความหนาพื้น $t = {t_cm}\\ cm$")
+    st.markdown(f"**Conclusion:** Selected slab thickness $t = {t_cm}\\ cm$")
     st.latex(f"d_x = t - cover - \\frac{{d_{{main}}}}{{2}} = {t_cm} - {covering_cm} - {d_main_mm/20} = {d_x:.2f}\\ cm")
 
-    st.markdown("#### 4. การคำนวณโมเมนต์ดัด (Bending Moment Calculation)")
+    st.markdown("#### 4. Bending Moment Calculation")
     if is_one_way:
-        st.markdown("ใช้สมการโมเมนต์สำหรับพื้นทางเดียว (เสมือนคานต่อเนื่อง):")
+        st.markdown("Using moment equations for a one-way slab (modeled as a continuous beam):")
         st.latex(f"M_{{x+}} = \\frac{{W_u L_x^2}}{{11}} = \\frac{{{w_u:.2f} \\times {Lx}^2}}{{11}} = {M_x_pos:.2f}\\ kg-m")
         st.latex(f"M_{{x-}} = \\frac{{W_u L_x^2}}{{10}} = \\frac{{{w_u:.2f} \\times {Lx}^2}}{{10}} = {M_x_neg:.2f}\\ kg-m")
-        st.markdown("*แกน Y ไม่เกิดโมเมนต์ดัดหลัก เสริมเพียงเหล็กกันร้าวต้านการยืดหดตัว (Temperature Steel)*")
+        st.markdown("*The Y-axis has no major bending moment; only temperature and shrinkage steel is provided.*")
     else:
-        st.markdown("ใช้ตารางสัมประสิทธิ์ ACI Method 3 (สำหรับพื้นสองทาง):")
+        st.markdown("Using ACI Method 3 coefficient tables (for two-way slabs):")
         st.latex(r"M_x = C_{x} \cdot W \cdot L_x^2 \quad , \quad M_y = C_{y} \cdot W \cdot L_x^2")
         st.latex(f"M_{{x+}} = (1.2({cx_p_dl:.3f})W_d + 1.6({cx_p_ll:.3f})W_l) \\times {Lx}^2 = {M_x_pos:.2f}\\ kg-m")
         st.latex(f"M_{{x-}} = (1.2({cx_n:.3f})W_d + 1.6({cx_n:.3f})W_l) \\times {Lx}^2 = {M_x_neg:.2f}\\ kg-m")
         st.latex(f"M_{{y+}} = (1.2({cy_p_dl:.3f})W_d + 1.6({cy_p_ll:.3f})W_l) \\times {Lx}^2 = {M_y_pos:.2f}\\ kg-m")
         st.latex(f"M_{{y-}} = (1.2({cy_n:.3f})W_d + 1.6({cy_n:.3f})W_l) \\times {Lx}^2 = {M_y_neg:.2f}\\ kg-m")
 
-    st.markdown("#### 5. การคำนวณปริมาณเหล็กเสริมและการผ่านเกณฑ์มาตรฐาน")
+    st.markdown("#### 5. Reinforcement Calculation and Code Compliance")
     st.latex(r"R_n = \frac{M_u}{\phi b d^2}, \quad \rho = \frac{0.85 f_c'}{f_y} \left(1 - \sqrt{1 - \frac{2 R_n}{0.85 f_c'}}\right)")
     
     calc_df = pd.DataFrame({
-        "ตำแหน่งการเสริมเหล็ก": ["เหล็กแกนหลักล่าง ทิศ X (Mx+)", "เหล็กแกนหลักบน ทิศ X (Mx-)", "เหล็กด้านล่าง ทิศ Y (My+)", "เหล็กด้านบน ทิศ Y (My-)"],
+        "Reinforcement Position": ["Bottom Main Steel, X-Dir (Mx+)", "Top Main Steel, X-Dir (Mx-)", "Bottom Steel, Y-Dir (My+)", "Top Steel, Y-Dir (My-)"],
         "Moment (kg-m)": [f"{M_x_pos:.1f}", f"{M_x_neg:.1f}", f"{M_y_pos:.1f}", f"{M_y_neg:.1f}"],
         "As Req (cm²/m)": [f"{As_xb_req:.2f}", f"{As_xt_req:.2f}", f"{As_yb_req:.2f}", f"{As_yt_req:.2f}"],
         "As Provided (cm²/m)": [f"{As_xb_prov:.2f}", f"{As_xt_prov:.2f}", f"{As_yb_prov:.2f}", f"{As_yt_prov:.2f}"],
-        "ผลการประเมิน": [
+        "Evaluation": [
             "OK" if As_xb_prov >= As_xb_req else "FAIL", 
             "OK" if As_xt_prov >= As_xt_req else "FAIL", 
             "OK" if As_yb_prov >= As_yb_req else "FAIL", 
@@ -364,12 +364,12 @@ with tab3:
     st.table(calc_df)
 
 with tab4:
-    st.subheader("📋 แบบขยายรายละเอียดการเสริมเหล็ก (Structural Detailing)")
-    st.markdown("แบบขยายหน้าตัดสัดส่วนจริง (True Scale) แสดงการซ้อนเลเยอร์ของเหล็กเสริมแยกตามพฤติกรรมอย่างถูกต้อง")
+    st.subheader("📋 Reinforcement Structural Detailing")
+    st.markdown("True-scale cross-section detailing correctly showing the rebar layering separated by structural behavior.")
 
     view_option = st.radio(
-        "🔄 เลือกมุมมองตัด (Section View):",
-        ["Section A-A (ตัดตามแนว X - เห็นเหล็ก X เป็นเส้นยาว)", "Section B-B (ตัดตามแนว Y - เห็นเหล็ก Y เป็นเส้นยาว)"],
+        "🔄 Select Section View:",
+        ["Section A-A (Cut along X-axis - X rebar shown as long continuous lines)", "Section B-B (Cut along Y-axis - Y rebar shown as long continuous lines)"],
         horizontal=True
     )
 
@@ -380,7 +380,7 @@ with tab4:
     beam_w = 20.0        
     h_beam = t_cm + 22.0 
     
-    # วาดคอนกรีตพื้นและคานรองรับหัวท้าย
+    # Draw concrete slab and end support beams
     ax_sec.add_patch(plt.Rectangle((-beam_w, t_cm - h_beam), beam_w, h_beam, facecolor='#f1f3f5', edgecolor='#34495e', linewidth=1.5))
     ax_sec.add_patch(plt.Rectangle((span_w, t_cm - h_beam), beam_w, h_beam, facecolor='#f1f3f5', edgecolor='#34495e', linewidth=1.5))
     ax_sec.add_patch(plt.Rectangle((0, 0), span_w, t_cm, facecolor='#f8f9fa', edgecolor='#34495e', linewidth=1.5))
@@ -388,7 +388,7 @@ with tab4:
     r_main = (d_main_mm / 10) / 2
     r_temp = (d_temp_mm / 10) / 2
 
-    # กำหนดพิกัด Y ของเหล็กแต่ละเลเยอร์ (Shop Drawing Layering)
+    # Define Y coordinates for each rebar layer (Shop Drawing Layering)
     y_x_bot = covering_cm + r_main                                  
     y_y_bot = covering_cm + (2 * r_main) + r_temp                   
     
@@ -417,12 +417,12 @@ with tab4:
         dot_bot_y = y_x_bot
         dot_top_y = y_x_top
         
-        lbl_dot = f"Cross X: {main_bar} @ {s_xb:.1f} cm (จุด)"
+        lbl_dot = f"Cross X: {main_bar} @ {s_xb:.1f} cm (dots)"
         r_dot = r_main
         
         if is_one_way:
-            lbl_line_bot = f"Temp Y Bot: {temp_bar} @ {s_yb:.1f} cm (วิ่งยาว)"
-            lbl_line_top = f"Temp Y Top: {temp_bar} @ {s_yt:.1f} cm (วิ่งยาว)"
+            lbl_line_bot = f"Temp Y Bot: {temp_bar} @ {s_yb:.1f} cm (continuous)"
+            lbl_line_top = f"Temp Y Top: {temp_bar} @ {s_yt:.1f} cm (continuous)"
             top_cut_L = span_w 
             show_top_mid = True
         else:
@@ -431,7 +431,7 @@ with tab4:
             top_cut_L = span_w * 0.25 
             show_top_mid = False
 
-    # วาดเหล็กเส้นยาวนอน
+    # Draw longitudinal rebars
     ax_sec.plot([-beam_w + 5, span_w + beam_w - 5], [line_bot_y, line_bot_y], color='#1a73e8', linewidth=2.8, zorder=4, label=lbl_line_bot)
     ax_sec.plot([-beam_w + 5, -beam_w + 5], [line_bot_y, line_bot_y + 4], color='#1a73e8', linewidth=2.8, zorder=4) 
     ax_sec.plot([span_w + beam_w - 5, span_w + beam_w - 5], [line_bot_y, line_bot_y + 4], color='#1a73e8', linewidth=2.8, zorder=4)
@@ -444,7 +444,7 @@ with tab4:
     ax_sec.plot([-beam_w + 5, -beam_w + 5], [line_top_y, line_top_y - 5], color='#d93025', linewidth=2.8, zorder=4) 
     ax_sec.plot([span_w + beam_w - 5, span_w + beam_w - 5], [line_top_y, line_top_y - 5], color='#d93025', linewidth=2.8, zorder=4)
 
-    # วาดจุดวงกลมตัดขวาง
+    # Draw transverse rebar cross-section dots
     for x in x_dots:
         ax_sec.add_patch(plt.Circle((x, dot_bot_y), r_dot, color='#1e7e34', zorder=5))
         if show_top_mid or (x <= top_cut_L or x >= span_w - top_cut_L):
@@ -452,7 +452,7 @@ with tab4:
             
     ax_sec.scatter([], [], color='#1e7e34', s=60, label=lbl_dot)
 
-    # วาดมิติเส้นบอกขนาด
+    # Draw dimension lines
     ax_sec.annotate('', xy=(span_w + beam_w + 8, 0), xytext=(span_w + beam_w + 8, t_cm), arrowprops=dict(arrowstyle='<->', color='#212529'))
     ax_sec.text(span_w + beam_w + 12, t_cm / 2, f"t = {t_cm} cm", va='center', weight='bold')
     
@@ -466,22 +466,22 @@ with tab4:
     ax_sec.legend(loc='upper center', bbox_to_anchor=(0.5, -0.06), ncol=3, frameon=True, facecolor='#f8f9fa')
     st.pyplot(fig_sec)
 
-    # 5. RECHECKED MATERIAL TAKEOFF (ตารางประมาณการวัสดุแม่นยำสูง)
+    # 5. RECHECKED MATERIAL TAKEOFF (High Accuracy Material Estimate Table)
     st.divider()
-    st.markdown("#### 📊 ปริมาณเหล็กเสริมและคอนกรีตสุทธิต่อตารางเมตร (Estimate Material Takeoff per $1\\ m^2$)")
+    st.markdown("#### 📊 Net Rebar and Concrete Volume per Square Meter (Estimate Material Takeoff per $1\\ m^2$)")
     
     w_main = (int(''.join(filter(str.isdigit, main_bar))) ** 2) / 162.0
     w_temp = (int(''.join(filter(str.isdigit, temp_bar))) ** 2) / 162.0
     
-    # ถอดน้ำหนักเฉลี่ยตามจริง (เหล็กบนคิดสัมประสิทธิ์พื้นที่ความยาวกระจาย 0.5 สำหรับระยะตัดขาด L/4 สองฝั่งคาน)
+    # Extract actual average weight (top steel uses a distribution length coefficient of 0.5 for the L/4 cut-off distance on both sides of the beams)
     kg_x = ((100 / s_xb) * w_main) + ((100 / s_xt) * w_main * 0.5)
     kg_y = ((100 / s_yb) * w_temp) + ((100 / s_yt) * w_temp * (1.0 if is_one_way else 0.5))
     total_steel = kg_x + kg_y
     concrete_vol = (t_cm / 100) * 1.0 * 1.0
     
     col1, col2, col3 = st.columns(3)
-    col1.metric("น้ำหนักเหล็กแกน X", f"{kg_x:.2f} kg/m²")
-    col2.metric("น้ำหนักเหล็กแกน Y", f"{kg_y:.2f} kg/m²")
-    col3.metric("ปริมาตรคอนกรีตพื้น", f"{concrete_vol:.3f} m³/m²")
+    col1.metric("X-Axis Steel Weight", f"{kg_x:.2f} kg/m²")
+    col2.metric("Y-Axis Steel Weight", f"{kg_y:.2f} kg/m²")
+    col3.metric("Concrete Slab Volume", f"{concrete_vol:.3f} m³/m²")
     
-    st.info(f"💡 **รวมน้ำหนักเหล็กเสริมตะแกรงแผ่นพื้นทั้งหมดสุทธิ:** {total_steel:.2f} kg ต่อตารางเมตร")
+    st.info(f"💡 **Total Net Rebar Mesh Weight for Slab:** {total_steel:.2f} kg per square meter")
