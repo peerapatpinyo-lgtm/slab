@@ -237,11 +237,8 @@ As_yt_prov = (ab_temp / s_yt) * 100 if s_yt > 0 else 0.0
 # 8. DASHBOARDS & CALCULATION SHEET (UPDATED V7)
 # ==========================================
 st.divider()
-tab1, tab2, tab3 = st.tabs([
-    "🚦 แดชบอร์ดตรวจสอบกำลัง", 
-    "📈 กราฟพฤติกรรมโครงสร้าง", 
-    "📑 รายการคำนวณวิศวกรรม (Detailed)"
-])
+
+tab1, tab2, tab3, tab4 = st.tabs(["🚦 แดชบอร์ดตรวจสอบกำลัง", "📈 กราฟพฤติกรรมโครงสร้าง", "📑 รายการคำนวณวิศวกรรม (Detailed)", "📋 แบบขยายหน้าตัดพื้น"])
 
 with tab1:
     st.subheader("🔍 การตรวจสอบสภาวะการใช้งาน (Serviceability Check)")
@@ -368,4 +365,76 @@ with tab3:
                   "OK" if As_yb_prov >= As_yb_req else "FAIL", "OK" if As_yt_prov >= As_yt_req or (is_one_way and M_y_neg==0) else "FAIL"]
     })
     st.table(calc_df)
-   
+
+# แก้ไขบรรทัดสัญกรณ์แท็บเดิม ให้เพิ่ม "📋 แบบขยายหน้าตัดพื้น" เข้าไป
+# tab1, tab2, tab3, tab4 = st.tabs(["🚦 แดชบอร์ดตรวจสอบกำลัง", "📈 กราฟพฤติกรรมโครงสร้าง", "📑 รายการคำนวณวิศวกรรม (Detailed)", "📋 แบบขยายหน้าตัดพื้น"])
+
+with tab4:
+    st.subheader("📋 แบบขยายรายละเอียดการเสริมเหล็ก (Slab Cross-Section Detail)")
+    st.markdown("แสดงรายละเอียดหน้าตัดจริงสำหรับการก่อสร้าง ( scale สัดส่วนตามค่าที่วิเคราะห์ )")
+
+    # 1. เริ่มสร้างรูปหน้าตัดพื้นด้วย Matplotlib
+    fig_sec, ax_sec = plt.subplots(figsize=(11, 4.5))
+    ax_sec.set_facecolor('#ffffff')
+    
+    # วาดเนื้อคอนกรีตแผ่นพื้น (กว้าง 100 cm ตามแถบพิจารณา, สูงเท่าความหนา t_cm)
+    width_canvas = 100.0
+    concrete_box = plt.Rectangle((0, 0), width_canvas, t_cm, facecolor='#ecf0f1', edgecolor='#7f8c8d', linewidth=2, hatch='...', alpha=0.7)
+    ax_sec.add_patch(concrete_box)
+    
+    # 2. คำนวณตำแหน่งพิกัดของเหล็กเสริม (ตามระยะหุ้มจริง)
+    y_bot_main = covering_cm + (d_main_mm / 20)
+    y_top_main = t_cm - covering_cm - (d_main_mm / 20)
+    
+    # วาดเหล็กเสริมหลักด้านล่าง (Bottom Rebar - เส้นแนวนอนยาว)
+    ax_sec.plot([2, width_canvas-2], [y_bot_main, y_bot_main], color='#2980b9', linewidth=3, label=f"Main Bot: {main_bar}@{s_xb:.1f} cm")
+    
+    # วาดเหล็กเสริมบนตรงจุดรองรับ (Top Rebar - แสดงช่วงระยะหักงอช่วง 1/4 ของความยาวช่วงพื้น)
+    ax_sec.plot([2, 30], [y_top_main, y_top_main], color='#e74c3c', linewidth=3, label=f"Top Support: {main_bar}@{s_xt:.1f} cm")
+    ax_sec.plot([width_canvas-30, width_canvas-2], [y_top_main, y_top_main], color='#e74c3c', linewidth=3)
+    
+    # 3. วาดเหล็กสกัดร้าว / เหล็กแกนรอง (ทิศทางตัดขวาง แสดงเป็นจุดวงกลม)
+    # เหล็กขวางด้านล่าง
+    spacing_dots = 15.0
+    x_dots = [10 + i * spacing_dots for i in range(6)]
+    for x in x_dots:
+        dot_bot = plt.Circle((x, y_bot_main + 0.8), d_temp_mm/20, color='#27ae60', zorder=5)
+        ax_sec.add_patch(dot_bot)
+    # จุดหลอกอันแรกเพื่อสร้าง Label ใน Legend
+    ax_sec.scatter([], [], color='#27ae60', s=40, label=f"Cross Bar: {temp_bar}@{s_yb:.1f} cm")
+
+    # 4. ใส่เส้นบอกขนาด (Dimension Lines) แบบวิศวกรรม
+    # บอกความหนาพื้น t
+    ax_sec.annotate('', xy=(width_canvas + 5, 0), xytext=(width_canvas + 5, t_cm),
+                arrowprops=dict(arrowstyle='<->', color='#2c3e50', linewidth=1.2))
+    ax_sec.text(width_canvas + 7, t_cm/2, f"t = {t_cm:.1f} cm", va='center', ha='left', weight='bold', color='#2c3e50')
+    
+    # บอกระยะหุ้มคอนกรีต (Covering)
+    ax_sec.annotate('', xy=(-4, 0), xytext=(-4, covering_cm),
+                arrowprops=dict(arrowstyle='<->', color='#7f8c8d', linewidth=1))
+    ax_sec.text(-6, covering_cm/2, f"Cover {covering_cm:.1f} cm", va='center', ha='right', fontsize=9, color='#7f8c8d')
+
+    # บอกความลึกประสิทธิผล d_x
+    ax_sec.annotate('', xy=(-12, 0), xytext=(-12, t_cm - covering_cm),
+                arrowprops=dict(arrowstyle='<->', color='#16a085', linewidth=1.2))
+    ax_sec.text(-14, (t_cm - covering_cm)/2, f"d_x = {d_x:.2f} cm", va='center', ha='right', weight='bold', color='#16a085')
+
+    # 5. ปรับแต่งความสวยงามของกรอบภาพ
+    ax_sec.set_xlim(-35, width_canvas + 25)
+    ax_sec.set_ylim(-3, t_cm + 5)
+    ax_sec.axis('off')  # ปิดแกน XY ไม้บรรทัดปกติออกไป
+    
+    # แสดงคำอธิบายสัญลักษณ์เหล็กเสริม
+    ax_sec.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=3, frameon=True, facecolor='#f8f9fa', fontsize=10)
+    
+    # พลอตรูปลง Streamlit
+    st.pyplot(fig_sec)
+    
+    # 6. แสดงตารางสรุปรายการตัดเหล็ก (Bar Cutting List Guide)
+    st.markdown("#### 🛠️ คำแนะนำการจัดและดัดเหล็กหน้างาน (Rebar Installation Guide)")
+    guide_df = pd.DataFrame({
+        "ประเภทเหล็กเสริม": ["เหล็กแกนหลักด้านล่าง (X-Bot)", "เหล็กบนเสริมจุดรองรับ (X-Top)", "เหล็กตะแกรงสกัดร้าว (Y-Bot)"],
+        "ขนาดและระยะจัดวาง": [f"{main_bar} @ {s_xb:.1f} cm", f"{main_bar} @ {s_xt:.1f} cm", f"{temp_bar} @ {s_yb:.1f} cm"],
+        "ตำแหน่งติดตั้ง": ["วางพาดตลอดแนวช่วงสั้น หนุนลูกปูนด้านล่าง", "เสริมพาดทับหลังคานลึกเข้าไป 1/4 ของความยาวช่วงพื้น", "วางตัดขวางตั้งฉากกับเหล็กหลักเพื่อกระจายแรงกันร้าว"]
+    })
+    st.table(guide_df)
