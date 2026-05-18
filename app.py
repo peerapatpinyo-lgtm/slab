@@ -246,19 +246,21 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     st.subheader("🔍 การตรวจสอบสภาวะการใช้งาน (Serviceability Check)")
     
-    # 1. แสดงผลตัวเลขแบบสแกนสายตาง่ายด้วย Metric Columns
+    # แก้ไขจุดพ่น Error เรียบร้อยแล้วจาก :.1.f เป็น :.1f
     col_m1, col_m2, col_m3 = st.columns(3)
     with col_m1:
-        st.metric(label="ความหนาที่ออกแบบไว้ (t)", value=f"{t_cm:.1.f} cm")
+        st.metric(label="ความหนาที่ออกแบบไว้ (t)", value=f"{t_cm:.1f} cm") # แก้ตรงนี้ครับ
     with col_m2:
-        st.metric(label="ความหนาขั้นต่ำตามโค้ด (t_min)", value=f"{t_min_req:.1f} cm", delta=f"{t_cm - t_min_req:.1f} cm", delta_color="normal" if deflection_passed else "inverse")
+        st.metric(label="ความหนาขั้นต่ำตามโค้ด (t_min)", value=f"{t_min_req:.1f} cm", 
+                  delta=f"{t_cm - t_min_req:.1f} cm", 
+                  delta_color="normal" if deflection_passed else "inverse")
     with col_m3:
         status_text = "ผ่าน (PASS)" if deflection_passed else "ไม่ผ่าน (FAIL)"
         st.metric(label="สถานะโครงสร้าง", value=status_text)
 
     st.divider()
 
-    # 2. การแจ้งเตือนพร้อมคำแนะนำเชิงวิศวกรรม
+    # การแจ้งเตือนพร้อมคำแนะนำเชิงวิศวกรรม
     if deflection_passed:
         st.success(
             f"**การตรวจสอบความหนาพื้น (Deflection Control): ผ่าน ✅**\n\n"
