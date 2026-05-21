@@ -14,7 +14,7 @@ else:
     plt.style.use('default')
 
 st.title("🏗️ SlabMaster Pro V7 (Detailed Calculation Edition)")
-st.markdown("**Reinforced Concrete (RC) Slab Analysis & Design Tool** | High Resolution, based on ACI 318")
+st.markdown("**Reinforced Concrete (RC) Slab Analysis & Design Tool** | High Resolution, based on ACI 318 & EIT Standard")
 st.divider()
 
 # ==========================================
@@ -80,7 +80,6 @@ with st.sidebar:
         t_cm = st.slider("Slab Thickness t (cm)", min_value=8.0, max_value=35.0, value=15.0, step=0.5)
         covering_cm = st.slider("Concrete Covering (cm)", min_value=1.5, max_value=5.0, value=2.0, step=0.5)
         
-        # FEATURE: Rebar Layering sequence selection
         layer_sequence = st.selectbox(
             "Critical Bottom Layer Placement", 
             ["X-Direction Steel on Bottom-most", "Y-Direction Steel on Bottom-most"],
@@ -104,7 +103,6 @@ with st.sidebar:
             UDL_LL = int(ll_preset.split("(")[1].split(" ")[0])
             
         st.markdown("---")
-        # FEATURE: Dynamic Load Combination Selection
         load_combo_preset = st.selectbox("Load Combination Factors", [
             "ACI 318 Current (1.2 DL + 1.6 LL)",
             "Older Code / MKS (1.4 DL + 1.7 LL)",
@@ -130,10 +128,13 @@ col_setup, col_blueprint = st.columns([1.3, 1])
 m_ratio = Lx / Ly if Ly > 0 else 0
 is_one_way = m_ratio < 0.5
 
+# สัมประสิทธิ์การคำนวณโมเมนต์ของ One-Way Slab ปรับตามทฤษฎีจริง
+ow_denom_pos = 11.0
+ow_denom_neg = 10.0
+
 with col_setup:
     st.subheader("📍 Boundary Conditions")
     
-    # Dynamic boundary conditions and t_min denominator mapping based on structural behavior
     if is_one_way:
         oneway_cond = st.selectbox("Select One-Way Slab Support Conditions:", [
             "Simply Supported (L/20)", 
@@ -151,8 +152,23 @@ with col_setup:
         denom_selected = ow_denom_map[oneway_cond]
         t_min_req = (Lx / denom_selected) * (0.4 + fy_main/7000) * 100
         
-        # Mapping visual boundaries for display simulation
-        bounds = (True, False, False, False) if "One End" in oneway_cond else ((True, True, False, False) if "Both Ends" in oneway_cond else ((True, False, False, False) if "Cantilever" in oneway_cond else (False, False, False, False)))
+        # FIX: ปรับแก้สัมประสิทธิ์ทางทฤษฎีของ One-Way Slab ตามมาตรฐานบทบัญญัติ ACI โค้ดเก่า/ใหม่
+        if "Simply Supported" in oneway_cond:
+            ow_denom_pos = 8.0
+            ow_denom_neg = 1.0 # ไม่มีโมเมนต์ลบที่ขอบรองรับอิสระ
+            bounds = (False, False, False, False)
+        elif "One End Continuous" in oneway_cond:
+            ow_denom_pos = 14.0
+            ow_denom_neg = 10.0
+            bounds = (True, False, False, False)
+        elif "Both Ends Continuous" in oneway_cond:
+            ow_denom_pos = 16.0
+            ow_denom_neg = 11.0
+            bounds = (True, True, False, False)
+        elif "Cantilever" in oneway_cond:
+            ow_denom_pos = 1.0 # ไม่มีโมเมนต์บวกกลางช่วงยื่น
+            ow_denom_neg = 2.0
+            bounds = (True, False, False, False)
     else:
         case_idx = st.selectbox("Select Support Conditions (ACI Cases):", [
             "Case 1: Interior panel (Continuous on 4 sides)", "Case 2: Single panel (Discontinuous on 4 sides)",
@@ -162,6 +178,7 @@ with col_setup:
             "Case 9: Continuous on 3 edges (1 long edge discontinuous)"
         ], index=0)
         case_selected = int(case_idx.split(":")[0].split(" ")[1])
+        # คำอธิบายสูตรลัดตามมาตรฐานควบคุมอาคารดั้งเดิมของไทย
         t_min_req = (2 * (Lx + Ly) / 180) * 100
         bounds = case_boundaries[case_selected]
     
@@ -169,7 +186,7 @@ with col_setup:
     if is_one_way:
         st.warning(f"**Structural Behavior:** One-Way Slab (Thickness rule based on ACI L/{denom_selected})")
     else:
-        st.success("**Structural Behavior:** Two-Way Slab (Thickness rule based on ACI Perimeter/180)")
+        st.success("**Structural Behavior:** Two-Way Slab (Thickness rule based on Perimeter/180)")
 
 with col_blueprint:
     fig_plan, ax_plan = plt.subplots(figsize=(4, 3.5))
@@ -194,7 +211,7 @@ with col_blueprint:
     ax_plan.set_ylim(-0.05, 1.05)
     ax_plan.axis('off')
     st.pyplot(fig_plan)
-    plt.close(fig_plan) # Prevent Memory Leak
+    plt.close(fig_plan)
 
 # ==========================================
 # 5. REBAR SIZES & EXACT EFFECTIVE DEPTH (d)
@@ -212,7 +229,6 @@ with col_b2:
     d_temp_mm = int(temp_bar.replace("RB", "").replace("DB", ""))
     ab_temp = (math.pi / 4) * ((d_temp_mm / 10) ** 2)
 
-# True Layering Sequence calculation logic
 if layer_sequence == "X-Direction Steel on Bottom-most":
     d_x = t_cm - covering_cm - (d_main_mm / 20)
     d_y = d_x - (d_main_mm / 20) - (d_temp_mm / 20)
@@ -225,18 +241,17 @@ else:
 # ==========================================
 slab_self_weight = (t_cm / 100) * 2400
 total_dl = slab_self_weight + UDL_SDL
-# FEATURE: Applying dynamic load combination factors
 w_u = (factor_dl * total_dl) + (factor_ll * UDL_LL)
 
 cx_n = cx_p_dl = cx_p_ll = cy_n = cy_p_dl = cy_p_ll = 0.0
 
 if is_one_way:
-    M_x_pos = (w_u * (Lx ** 2)) / 11
-    M_x_neg = (w_u * (Lx ** 2)) / 10
+    # FIX: คำนวณตามสัมประสิทธิ์ที่แมปปิ้งแปรผันตามประเภทฐานรองรับจริง
+    M_x_pos = (w_u * (Lx ** 2)) / ow_denom_pos if "Cantilever" not in oneway_cond else 0.0
+    M_x_neg = (w_u * (Lx ** 2)) / ow_denom_neg if "Simply Supported" not in oneway_cond else 0.0
     M_y_pos = M_y_neg = 0.0
 else:
     cx_n, cx_p_dl, cx_p_ll, cy_n, cy_p_dl, cy_p_ll = get_full_aci_method3_coeffs(case_selected, m_ratio)
-    # Applying user-selected load factors to Two-Way Method 3 logic
     M_x_pos = (factor_dl * cx_p_dl * total_dl + factor_ll * cx_p_ll * UDL_LL) * (Lx ** 2)
     M_x_neg = (factor_dl * cx_n * total_dl + factor_ll * cx_n * UDL_LL) * (Lx ** 2)
     M_y_pos = (factor_dl * cy_p_dl * total_dl + factor_ll * cy_p_ll * UDL_LL) * (Lx ** 2)
@@ -244,7 +259,6 @@ else:
 
 deflection_passed = t_cm >= t_min_req
 
-# Concrete Shear Capacity Check (ACI 318 Standard MKS version)
 V_u = w_u * Lx / 2.0 
 min_d = min(d_x, d_y)
 phi_Vc = 0.75 * 0.53 * math.sqrt(fc_prime) * 100 * min_d
@@ -270,16 +284,16 @@ if any(val == -1.0 for val in [as_xb_calc, as_xt_calc, as_yb_calc, as_yt_calc]):
     st.error("🚨 **CRITICAL ERROR: Slab is too thin! Concrete section fails in compression (Compression Failure)**")
     st.stop()
 
-As_xb_req = max(as_xb_calc, As_min_main)
-As_xt_req = max(as_xt_calc, As_min_main)
+As_xb_req = max(as_xb_calc, As_min_main) if M_x_pos > 0 else 0.0
+As_xt_req = max(as_xt_calc, As_min_main) if M_x_neg > 0 else 0.0
 As_yb_req = max(as_yb_calc, As_min_main) if not is_one_way else As_temp_req
 As_yt_req = max(as_yt_calc, As_min_main) if (not is_one_way and M_y_neg > 0) else 0.0
 
 # ==========================================
 # 7. SMART REBAR DETAILING
 # ==========================================
-s_xb_rec = get_practical_spacing(As_xb_req, ab_main, t=t_cm)
-s_xt_rec = get_practical_spacing(As_xt_req, ab_main, t=t_cm)
+s_xb_rec = get_practical_spacing(As_xb_req, ab_main, t=t_cm) if As_xb_req > 0 else 25.0
+s_xt_rec = get_practical_spacing(As_xt_req, ab_main, t=t_cm) if As_xt_req > 0 else 25.0
 s_yb_rec = get_practical_spacing(As_yb_req, ab_temp, is_temp=is_one_way, t=t_cm)
 s_yt_rec = get_practical_spacing(As_yt_req, ab_temp, t=t_cm) if As_yt_req > 0 else 25.0
 
@@ -294,17 +308,14 @@ if is_one_way:
 else:
     s_yt = s_yt_input
 
-As_xb_prov = (ab_main / s_xb) * 100
-As_xt_prov = (ab_main / s_xt) * 100
+As_xb_prov = (ab_main / s_xb) * 100 if M_x_pos > 0 else 0.0
+As_xt_prov = (ab_main / s_xt) * 100 if M_x_neg > 0 else 0.0
 As_yb_prov = (ab_temp / s_yb) * 100
-As_yt_prov = (ab_temp / s_yt) * 100 if s_yt > 0 else 0.0
+As_yt_prov = (ab_temp / s_yt) * 100 if (s_yt > 0 and not is_one_way) else (As_yb_prov if is_one_way else 0.0)
 
 # ==========================================
 # 7.5 ADVANCED DETAILING (THAI/ACI 318M STANDARD)
 # ==========================================
-# ------------------------------------------------
-# A. Crack Control (ตรวจสอบรอยร้าวตามมาตรฐาน วสท./ACI)
-# ------------------------------------------------
 fs_mpa = (2.0 / 3.0) * (fy_main * 0.0980665) 
 cc_mm = covering_cm * 10.0
 s_max_crack_mm = min(380 * (280 / fs_mpa) - 2.5 * cc_mm, 300 * (280 / fs_mpa))
@@ -312,9 +323,6 @@ s_max_crack_cm = s_max_crack_mm / 10.0
 
 crack_control_passed = (s_xb <= s_max_crack_cm) and (s_yb <= s_max_crack_cm)
 
-# ------------------------------------------------
-# B. Corner Reinforcement (เหล็กกันร้าวที่มุม สำหรับ Two-Way Slab)
-# ------------------------------------------------
 needs_corner_steel = False
 corner_count = 0
 As_corner_req = L_corner = s_corner = 0.0
@@ -356,11 +364,10 @@ with tab1:
 
     st.divider()
 
-    # Deflection Output message
     if deflection_passed:
         st.success(
             f"**Thickness Check (Deflection Control): PASS ✅**\n\n"
-            f"Thickness $t = {t_cm}$ cm is greater than the ACI minimum requirement ({t_min_req:.1f} cm). "
+            f"Thickness $t = {t_cm}$ cm is greater than the standard minimum requirement ({t_min_req:.1f} cm). "
             f"The slab has sufficient stiffness."
         )
     else:
@@ -369,7 +376,6 @@ with tab1:
             f"**🛠️ Recommendation:** Please increase the slab thickness $t$ to at least **{math.ceil(t_min_req):.1f} cm**."
         )
 
-    # Shear Output message
     if shear_passed:
         st.success(
             f"**Shear Capacity Check ($V_u \\le \phi V_c$): PASS ✅**\n\n"
@@ -383,7 +389,6 @@ with tab1:
             f"**🛠️ Recommendation:** Increase slab thickness $t$ or increase concrete grade $f'_c$ immediately."
         )
 
-    # Crack Control message
     if crack_control_passed:
         st.success(
             f"**Crack Control Check ($s \\le s_{{max}}$): PASS ✅**\n\n"
@@ -422,7 +427,7 @@ with tab2:
     ax_bar.spines['right'].set_visible(False)
     plt.tight_layout()
     st.pyplot(fig_bar)
-    plt.close(fig_bar) # Prevent Memory Leak
+    plt.close(fig_bar)
 
 with tab3:
     st.markdown("### 📑 Structural Calculation Sheet")
@@ -436,7 +441,6 @@ with tab3:
 
     st.markdown("#### 2. Load Analysis")
     st.latex(f"Dead\\ Load\\ (W_d) = (\\frac{{{t_cm}}}{{100}} \\times 2400) + {UDL_SDL} = {total_dl:.2f}\\ kg/m^2")
-    # Dynamic variables applied to LaTeX output
     st.latex(f"Ultimate\\ Load\\ (W_u) = {factor_dl}(W_d) + {factor_ll}(L_L) = {factor_dl}({total_dl:.2f}) + {factor_ll}({UDL_LL}) = {w_u:.2f}\\ kg/m^2")
     
     st.markdown("#### 3. Minimum Thickness for Deflection")
@@ -444,7 +448,7 @@ with tab3:
         st.markdown(f"According to ACI 318 for One-Way Slab under **{oneway_cond}** condition:")
         st.latex(f"t_{{min}} = \\frac{{L_x}}{{{denom_selected}}} \\left(0.4 + \\frac{{f_y}}{{7000}}\\right) = \\frac{{{Lx*100:.0f}}}{{{denom_selected}}} \\left(0.4 + \\frac{{{fy_main}}}{{7000}}\\right) = {t_min_req:.2f}\\ cm")
     else:
-        st.markdown("According to ACI 318 Method 3 for Two-Way Slab Perimeter Rule:")
+        st.markdown("According to Standard Municipal Code (Simplified Rules for Two-Way Slab Perimeter Rule):")
         st.latex(f"t_{{min}} = \\frac{{2(L_x + L_y)}}{{180}} = \\frac{{2({Lx*100:.0f} + {Ly*100:.0f})}}{{180}} = {t_min_req:.2f}\\ cm")
     
     st.markdown(f"**Conclusion:** Selected slab thickness $t = {t_cm}\\ cm$")
@@ -453,7 +457,8 @@ with tab3:
 
     st.markdown("#### 4. Bending Moment Calculation")
     if is_one_way:
-        st.latex(f"M_{{x+}} = \\frac{{W_u L_x^2}}{{11}} = {M_x_pos:.2f}\\ kg-m, \\quad M_{{x-}} = \\frac{{W_u L_x^2}}{{10}} = {M_x_neg:.2f}\\ kg-m")
+        st.markdown(f"Using dynamic structural coefficients (Denominator for Pos: {ow_denom_pos}, Neg: {ow_denom_neg}):")
+        st.latex(f"M_{{x+}} = {M_x_pos:.2f}\\ kg-m, \\quad M_{{x-}} = {M_x_neg:.2f}\\ kg-m")
     else:
         st.latex(f"M_{{x+}} = {M_x_pos:.2f}\\ kg-m, \\quad M_{{x-}} = {M_x_neg:.2f}\\ kg-m")
         st.latex(f"M_{{y+}} = {M_y_pos:.2f}\\ kg-m, \\quad M_{{y-}} = {M_y_neg:.2f}\\ kg-m")
@@ -465,10 +470,10 @@ with tab3:
         "As Req (cm²/m)": [f"{As_xb_req:.2f}", f"{As_xt_req:.2f}", f"{As_yb_req:.2f}", f"{As_yt_req:.2f}"],
         "As Provided (cm²/m)": [f"{As_xb_prov:.2f}", f"{As_xt_prov:.2f}", f"{As_yb_prov:.2f}", f"{As_yt_prov:.2f}"],
         "Evaluation": [
-            "OK" if As_xb_prov >= As_xb_req else "FAIL", 
-            "OK" if As_xt_prov >= As_xt_req else "FAIL", 
+            "OK" if As_xb_prov >= As_xb_req else ("-" if M_x_pos == 0 else "FAIL"), 
+            "OK" if As_xt_prov >= As_xt_req else ("-" if M_x_neg == 0 else "FAIL"), 
             "OK" if As_yb_prov >= As_yb_req else "FAIL", 
-            "OK" if (As_yt_prov >= As_yt_req or (is_one_way and M_y_neg == 0)) else "FAIL"
+            "OK" if (As_yt_prov >= As_yt_req or is_one_way) else "FAIL"
         ]
     })
     st.table(calc_df)
@@ -481,8 +486,7 @@ with tab3:
     else:
         st.error(f"Evaluation: $V_u ({V_u:.1f}\\ kg/m) > \\phi V_c ({phi_Vc:.1f}\\ kg/m)$ ➡️ **UNSAFE (FAIL)**")
 
-    # ==================== ADVANCED DETAILING SHEET ====================
-    st.markdown("#### 7. Serviceability: Crack Width Control (การควบคุมรอยร้าว)")
+    st.markdown("#### 7. Serviceability: Crack Width Control")
     st.markdown(f"ตามมาตรฐาน วสท. / ACI 318M ความเค้นใช้งาน $f_s \\approx \\frac{{2}}{{3}} f_y = {fs_mpa:.2f}\\ MPa$")
     st.latex(f"s_{{max}} = 380 \\left( \\frac{{280}}{{f_s}} \\right) - 2.5 c_c = {s_max_crack_cm:.2f}\\ cm")
     if crack_control_passed:
@@ -491,7 +495,7 @@ with tab3:
         st.error(f"มีการใช้ระยะแอดเหล็ก > {s_max_crack_cm:.2f}\\ cm ➡️ **UNSAFE (FAIL)**")
 
     if needs_corner_steel:
-        st.markdown("#### 8. Torsional Corner Reinforcement (เหล็กกันร้าวที่มุม)")
+        st.markdown("#### 8. Torsional Corner Reinforcement")
         st.info(f"**พื้นประเภทที่ {case_selected}:** ตรวจพบมุมอิสระ (Discontinuous Corners) จำนวน **{corner_count} มุม** ต้องเสริมเหล็กกันร้าว")
         st.latex(f"L_{{corner}} = \\frac{{L_x}}{{5}} = \\frac{{{Lx}}}{{5}} = {L_corner:.2f}\\ m")
         st.latex(f"A_{{s,corner}} = A_{{s,pos(max)}} = {As_corner_req:.2f}\\ cm^2/m")
@@ -510,7 +514,7 @@ with tab4:
     ax_sec.set_facecolor('#ffffff')
     
     span_w = 120.0       
-    beam_w = 20.0        
+    beam_w = 20.0       
     h_beam = t_cm + 22.0 
     
     ax_sec.add_patch(plt.Rectangle((-beam_w, t_cm - h_beam), beam_w, h_beam, facecolor='#f1f3f5', edgecolor='#34495e', linewidth=1.5))
@@ -520,9 +524,8 @@ with tab4:
     r_main = (d_main_mm / 10) / 2
     r_temp = (d_temp_mm / 10) / 2
 
-    # Dyn layer setup based on user input
     if layer_sequence == "X-Direction Steel on Bottom-most":
-        y_x_bot = covering_cm + r_main                                  
+        y_x_bot = covering_cm + r_main                                   
         y_y_bot = covering_cm + (2 * r_main) + r_temp                    
         y_x_top = t_cm - covering_cm - r_main                            
         y_y_top = t_cm - covering_cm - (2 * r_main) - r_temp            
@@ -540,8 +543,8 @@ with tab4:
         line_top_y = y_x_top
         dot_bot_y = y_y_bot
         dot_top_y = y_y_top
-        lbl_line_bot = f"Main X Bot: {main_bar} @ {s_xb:.1f} cm"
-        lbl_line_top = f"Main X Top: {main_bar} @ {s_xt:.1f} cm"
+        lbl_line_bot = f"Main X Bot: {main_bar} @ {s_xb:.1f} cm" if M_x_pos > 0 else "No Main X Bot"
+        lbl_line_top = f"Main X Top: {main_bar} @ {s_xt:.1f} cm" if M_x_neg > 0 else "No Main X Top"
         lbl_dot = f"Cross Y: {temp_bar} @ {s_yb:.1f} cm"
         r_dot = r_temp
         top_cut_L = span_w * 0.25 
@@ -565,7 +568,7 @@ with tab4:
             top_cut_L = span_w * 0.25 
             show_top_mid = False
 
-    # Draw longitudinal rebars
+    # วาดเหล็กเส้นยาว
     ax_sec.plot([-beam_w + 5, span_w + beam_w - 5], [line_bot_y, line_bot_y], color='#1a73e8', linewidth=2.8, zorder=4, label=lbl_line_bot)
     ax_sec.plot([-beam_w + 5, -beam_w + 5], [line_bot_y, line_bot_y + 4], color='#1a73e8', linewidth=2.8, zorder=4) 
     ax_sec.plot([span_w + beam_w - 5, span_w + beam_w - 5], [line_bot_y, line_bot_y + 4], color='#1a73e8', linewidth=2.8, zorder=4)
@@ -573,12 +576,15 @@ with tab4:
     if show_top_mid:
         ax_sec.plot([-beam_w + 5, span_w + beam_w - 5], [line_top_y, line_top_y], color='#d93025', linewidth=2.8, zorder=4, label=lbl_line_top)
     else:
-        ax_sec.plot([-beam_w + 5, top_cut_L], [line_top_y, line_top_y], color='#d93025', linewidth=2.8, zorder=4, label=lbl_line_top)
-        ax_sec.plot([span_w - top_cut_L, span_w + beam_w - 5], [line_top_y, line_top_y], color='#d93025', linewidth=2.8, zorder=4)
+        if "Section A-A" in view_option and M_x_neg <= 0:
+            pass # ถ้าไม่มีโมเมนต์ลบไม่ต้องวาดเหล็กบน
+        else:
+            ax_sec.plot([-beam_w + 5, top_cut_L], [line_top_y, line_top_y], color='#d93025', linewidth=2.8, zorder=4, label=lbl_line_top)
+            ax_sec.plot([span_w - top_cut_L, span_w + beam_w - 5], [line_top_y, line_top_y], color='#d93025', linewidth=2.8, zorder=4)
     ax_sec.plot([-beam_w + 5, -beam_w + 5], [line_top_y, line_top_y - 5], color='#d93025', linewidth=2.8, zorder=4) 
     ax_sec.plot([span_w + beam_w - 5, span_w + beam_w - 5], [line_top_y, line_top_y - 5], color='#d93025', linewidth=2.8, zorder=4)
 
-    # Draw dots
+    # วาดจุดเหล็กปลอก/เหล็กขวาง
     for x in x_dots:
         ax_sec.add_patch(plt.Circle((x, dot_bot_y), r_dot, color='#1e7e34', zorder=5))
         if show_top_mid or (x <= top_cut_L or x >= span_w - top_cut_L):
@@ -598,16 +604,16 @@ with tab4:
     ax_sec.axis('off')
     ax_sec.legend(loc='upper center', bbox_to_anchor=(0.5, -0.06), ncol=3, frameon=True, facecolor='#f8f9fa')
     st.pyplot(fig_sec)
-    plt.close(fig_sec) # Prevent Memory Leak
+    plt.close(fig_sec)
 
-    # Material takeoff
+    # FIX: เติมเต็มส่วนที่ขาดหายไปของ Material Takeoff และครอบ Syntax ทั้งหมดให้สมบูรณ์
     st.divider()
     st.markdown("#### 📊 Net Rebar and Concrete Volume per Square Meter (Estimate Material Takeoff per $1\\ m^2$)")
     
     w_main = (int(''.join(filter(str.isdigit, main_bar))) ** 2) / 162.0
     w_temp = (int(''.join(filter(str.isdigit, temp_bar))) ** 2) / 162.0
     
-    kg_x = ((100 / s_xb) * w_main) + ((100 / s_xt) * w_main * 0.5)
+    kg_x = (((100 / s_xb) * w_main) if M_x_pos > 0 else 0.0) + (((100 / s_xt) * w_main * 0.5) if M_x_neg > 0 else 0.0)
     kg_y = ((100 / s_yb) * w_temp) + ((100 / s_yt) * w_temp * (1.0 if is_one_way else 0.5))
     total_steel = kg_x + kg_y
     concrete_vol = (t_cm / 100) * 1.0 * 1.0
@@ -615,6 +621,4 @@ with tab4:
     col1, col2, col3 = st.columns(3)
     col1.metric("X-Axis Steel Weight", f"{kg_x:.2f} kg/m²")
     col2.metric("Y-Axis Steel Weight", f"{kg_y:.2f} kg/m²")
-    col3.metric("Concrete Slab Volume", f"{concrete_vol:.3f} m³/m²")
-    
-    st.info(f"💡 **Total Net Rebar Mesh Weight for Slab:** {total_steel:.2f} kg per square meter")
+    col3.metric("Concrete Volume", f"{concrete_vol:.3f} m³/m²")
