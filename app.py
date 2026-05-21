@@ -80,7 +80,7 @@ with st.sidebar:
         t_cm = st.slider("Slab Thickness t (cm)", min_value=8.0, max_value=35.0, value=15.0, step=0.5)
         covering_cm = st.slider("Concrete Covering (cm)", min_value=1.5, max_value=5.0, value=2.0, step=0.5)
         
-        # FEATURE 3: Rebar Layering sequence selection
+        # FEATURE: Rebar Layering sequence selection
         layer_sequence = st.selectbox(
             "Critical Bottom Layer Placement", 
             ["X-Direction Steel on Bottom-most", "Y-Direction Steel on Bottom-most"],
@@ -102,6 +102,25 @@ with st.sidebar:
             UDL_LL = st.number_input("Live Load (kg/m²)", min_value=0, value=250)
         else:
             UDL_LL = int(ll_preset.split("(")[1].split(" ")[0])
+            
+        st.markdown("---")
+        # FEATURE: Dynamic Load Combination Selection
+        load_combo_preset = st.selectbox("Load Combination Factors", [
+            "ACI 318 Current (1.2 DL + 1.6 LL)",
+            "Older Code / MKS (1.4 DL + 1.7 LL)",
+            "Custom Combination"
+        ])
+        
+        if load_combo_preset == "Custom Combination":
+            col_lc1, col_lc2 = st.columns(2)
+            factor_dl = col_lc1.number_input("DL Factor", min_value=1.0, value=1.2, step=0.1)
+            factor_ll = col_lc2.number_input("LL Factor", min_value=1.0, value=1.6, step=0.1)
+        elif "1.4" in load_combo_preset:
+            factor_dl = 1.4
+            factor_ll = 1.7
+        else:
+            factor_dl = 1.2
+            factor_ll = 1.6
 
 # ==========================================
 # 4. MAIN WORKSPACE & BOUNDARY CONDITIONS
@@ -114,7 +133,7 @@ is_one_way = m_ratio < 0.5
 with col_setup:
     st.subheader("📍 Boundary Conditions")
     
-    # FEATURE 2: Dynamic boundary conditions and t_min denominator mapping based on structural behavior
+    # Dynamic boundary conditions and t_min denominator mapping based on structural behavior
     if is_one_way:
         oneway_cond = st.selectbox("Select One-Way Slab Support Conditions:", [
             "Simply Supported (L/20)", 
@@ -193,7 +212,7 @@ with col_b2:
     d_temp_mm = int(temp_bar.replace("RB", "").replace("DB", ""))
     ab_temp = (math.pi / 4) * ((d_temp_mm / 10) ** 2)
 
-# FEATURE 3: True Layering Sequence calculation logic
+# True Layering Sequence calculation logic
 if layer_sequence == "X-Direction Steel on Bottom-most":
     d_x = t_cm - covering_cm - (d_main_mm / 20)
     d_y = d_x - (d_main_mm / 20) - (d_temp_mm / 20)
@@ -206,7 +225,8 @@ else:
 # ==========================================
 slab_self_weight = (t_cm / 100) * 2400
 total_dl = slab_self_weight + UDL_SDL
-w_u = (1.2 * total_dl) + (1.6 * UDL_LL)
+# FEATURE: Applying dynamic load combination factors
+w_u = (factor_dl * total_dl) + (factor_ll * UDL_LL)
 
 cx_n = cx_p_dl = cx_p_ll = cy_n = cy_p_dl = cy_p_ll = 0.0
 
@@ -216,17 +236,16 @@ if is_one_way:
     M_y_pos = M_y_neg = 0.0
 else:
     cx_n, cx_p_dl, cx_p_ll, cy_n, cy_p_dl, cy_p_ll = get_full_aci_method3_coeffs(case_selected, m_ratio)
-    M_x_pos = (1.2 * cx_p_dl * total_dl + 1.6 * cx_p_ll * UDL_LL) * (Lx ** 2)
-    M_x_neg = (1.2 * cx_n * total_dl + 1.6 * cx_n * UDL_LL) * (Lx ** 2)
-    M_y_pos = (1.2 * cy_p_dl * total_dl + 1.6 * cy_p_ll * UDL_LL) * (Lx ** 2)
-    M_y_neg = (1.2 * cy_n * total_dl + 1.6 * cy_n * UDL_LL) * (Lx ** 2)
+    # Applying user-selected load factors to Two-Way Method 3 logic
+    M_x_pos = (factor_dl * cx_p_dl * total_dl + factor_ll * cx_p_ll * UDL_LL) * (Lx ** 2)
+    M_x_neg = (factor_dl * cx_n * total_dl + factor_ll * cx_n * UDL_LL) * (Lx ** 2)
+    M_y_pos = (factor_dl * cy_p_dl * total_dl + factor_ll * cy_p_ll * UDL_LL) * (Lx ** 2)
+    M_y_neg = (factor_dl * cy_n * total_dl + factor_ll * cy_n * UDL_LL) * (Lx ** 2)
 
 deflection_passed = t_cm >= t_min_req
 
-# FEATURE 1: Concrete Shear Capacity Check (ACI 318 Standard MKS version)
-# V_u is max shear at support per meter width (kg/m)
+# Concrete Shear Capacity Check (ACI 318 Standard MKS version)
 V_u = w_u * Lx / 2.0 
-# Concrete shear capacity: phi*V_c = phi * 0.53 * sqrt(fc') * b * d (b = 100 cm, d in cm, fc' in ksc)
 min_d = min(d_x, d_y)
 phi_Vc = 0.75 * 0.53 * math.sqrt(fc_prime) * 100 * min_d
 shear_passed = V_u <= phi_Vc
@@ -353,13 +372,13 @@ with tab1:
     # Shear Output message
     if shear_passed:
         st.success(
-            f"**Shear Capacity Check ($V_u \le \phi V_c$): PASS ✅**\n\n"
+            f"**Shear Capacity Check ($V_u \\le \phi V_c$): PASS ✅**\n\n"
             f"Ultimate Shear force $V_u = {V_u:.1f}$ kg/m is less than Concrete Shear Capacity $\phi V_c = {phi_Vc:.1f}$ kg/m. "
             f"The concrete cross section is safe enough against shear without stirrups."
         )
     else:
         st.error(
-            f"**Shear Capacity Check ($V_u \le \phi V_c$): FAIL ❌**\n\n"
+            f"**Shear Capacity Check ($V_u \\le \phi V_c$): FAIL ❌**\n\n"
             f"**Reason:** Concrete cross section fails in shear! Ultimate force $V_u = {V_u:.1f}$ kg/m exceeds capacity $\phi V_c = {phi_Vc:.1f}$ kg/m.\n\n"
             f"**🛠️ Recommendation:** Increase slab thickness $t$ or increase concrete grade $f'_c$ immediately."
         )
@@ -367,12 +386,12 @@ with tab1:
     # Crack Control message
     if crack_control_passed:
         st.success(
-            f"**Crack Control Check ($s \le s_{{max}}$): PASS ✅**\n\n"
+            f"**Crack Control Check ($s \\le s_{{max}}$): PASS ✅**\n\n"
             f"ระยะห่างเหล็กเสริมที่จัดไว้ปลอดภัยตามข้อกำหนดการควบคุมรอยร้าว (ระยะห่างสูงสุดที่ยอมรับได้คือ {s_max_crack_cm:.1f} cm)"
         )
     else:
         st.error(
-            f"**Crack Control Check ($s \le s_{{max}}$): FAIL ❌**\n\n"
+            f"**Crack Control Check ($s \\le s_{{max}}$): FAIL ❌**\n\n"
             f"ระยะเรียงเหล็กกว้างเกินไป เสี่ยงต่อการเกิดรอยร้าว! (ระยะห่างสูงสุดที่ยอมรับได้คือ {s_max_crack_cm:.1f} cm)\n\n"
             f"**🛠️ Recommendation:** ให้ลดระยะแอดเหล็ก (Spacing) ลง"
         )
@@ -417,7 +436,8 @@ with tab3:
 
     st.markdown("#### 2. Load Analysis")
     st.latex(f"Dead\\ Load\\ (W_d) = (\\frac{{{t_cm}}}{{100}} \\times 2400) + {UDL_SDL} = {total_dl:.2f}\\ kg/m^2")
-    st.latex(f"Ultimate\\ Load\\ (W_u) = 1.2(W_d) + 1.6(L_L) = 1.2({total_dl:.2f}) + 1.6({UDL_LL}) = {w_u:.2f}\\ kg/m^2")
+    # Dynamic variables applied to LaTeX output
+    st.latex(f"Ultimate\\ Load\\ (W_u) = {factor_dl}(W_d) + {factor_ll}(L_L) = {factor_dl}({total_dl:.2f}) + {factor_ll}({UDL_LL}) = {w_u:.2f}\\ kg/m^2")
     
     st.markdown("#### 3. Minimum Thickness for Deflection")
     if is_one_way:
