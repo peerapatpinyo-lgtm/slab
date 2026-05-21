@@ -281,6 +281,37 @@ As_yb_prov = (ab_temp / s_yb) * 100
 As_yt_prov = (ab_temp / s_yt) * 100 if s_yt > 0 else 0.0
 
 # ==========================================
+# 7.5 ADVANCED DETAILING (THAI/ACI 318M STANDARD)
+# ==========================================
+# ------------------------------------------------
+# A. Crack Control (ตรวจสอบรอยร้าวตามมาตรฐาน วสท./ACI)
+# ------------------------------------------------
+fs_mpa = (2.0 / 3.0) * (fy_main * 0.0980665) 
+cc_mm = covering_cm * 10.0
+s_max_crack_mm = min(380 * (280 / fs_mpa) - 2.5 * cc_mm, 300 * (280 / fs_mpa))
+s_max_crack_cm = s_max_crack_mm / 10.0
+
+crack_control_passed = (s_xb <= s_max_crack_cm) and (s_yb <= s_max_crack_cm)
+
+# ------------------------------------------------
+# B. Corner Reinforcement (เหล็กกันร้าวที่มุม สำหรับ Two-Way Slab)
+# ------------------------------------------------
+needs_corner_steel = False
+corner_count = 0
+As_corner_req = L_corner = s_corner = 0.0
+
+if not is_one_way:
+    if case_selected == 2: corner_count = 4
+    elif case_selected in [3, 4]: corner_count = 2
+    elif case_selected == 5: corner_count = 1
+    
+    if corner_count > 0:
+        needs_corner_steel = True
+        As_corner_req = max(As_xb_req, As_yb_req)
+        L_corner = Lx / 5.0
+        s_corner = get_practical_spacing(As_corner_req, ab_main, t=t_cm)
+
+# ==========================================
 # 8. DASHBOARDS & CALCULATION SHEET
 # ==========================================
 st.divider()
@@ -290,20 +321,19 @@ tab1, tab2, tab3, tab4 = st.tabs(["🚦 Capacity Check Dashboard", "📈 Structu
 with tab1:
     st.subheader("🔍 Safety & Serviceability Check")
     
-    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+    col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
     with col_m1:
         st.metric(label="Designed Thickness (t)", value=f"{t_cm:.1f} cm")
     with col_m2:
-        st.metric(label="Minimum Code Thickness (t_min)", value=f"{t_min_req:.1f} cm", 
+        st.metric(label="Minimum Code Thickness", value=f"{t_min_req:.1f} cm", 
                   delta=f"{t_cm - t_min_req:.1f} cm", 
                   delta_color="normal" if deflection_passed else "inverse")
     with col_m3:
-        status_text = "PASS" if deflection_passed else "FAIL"
-        st.metric(label="Deflection Status", value=status_text)
-    # FEATURE 1: Add dashboard item for Shear Check
+        st.metric(label="Deflection Status", value="PASS" if deflection_passed else "FAIL")
     with col_m4:
-        shear_status = "PASS" if shear_passed else "FAIL"
-        st.metric(label="Shear Safety Status", value=shear_status)
+        st.metric(label="Shear Safety Status", value="PASS" if shear_passed else "FAIL")
+    with col_m5:
+        st.metric(label="Crack Control Check", value="PASS" if crack_control_passed else "FAIL")
 
     st.divider()
 
@@ -320,7 +350,7 @@ with tab1:
             f"**🛠️ Recommendation:** Please increase the slab thickness $t$ to at least **{math.ceil(t_min_req):.1f} cm**."
         )
 
-    # FEATURE 1: Shear Output message in Dashboard
+    # Shear Output message
     if shear_passed:
         st.success(
             f"**Shear Capacity Check ($V_u \le \phi V_c$): PASS ✅**\n\n"
@@ -332,6 +362,19 @@ with tab1:
             f"**Shear Capacity Check ($V_u \le \phi V_c$): FAIL ❌**\n\n"
             f"**Reason:** Concrete cross section fails in shear! Ultimate force $V_u = {V_u:.1f}$ kg/m exceeds capacity $\phi V_c = {phi_Vc:.1f}$ kg/m.\n\n"
             f"**🛠️ Recommendation:** Increase slab thickness $t$ or increase concrete grade $f'_c$ immediately."
+        )
+
+    # Crack Control message
+    if crack_control_passed:
+        st.success(
+            f"**Crack Control Check ($s \le s_{{max}}$): PASS ✅**\n\n"
+            f"ระยะห่างเหล็กเสริมที่จัดไว้ปลอดภัยตามข้อกำหนดการควบคุมรอยร้าว (ระยะห่างสูงสุดที่ยอมรับได้คือ {s_max_crack_cm:.1f} cm)"
+        )
+    else:
+        st.error(
+            f"**Crack Control Check ($s \le s_{{max}}$): FAIL ❌**\n\n"
+            f"ระยะเรียงเหล็กกว้างเกินไป เสี่ยงต่อการเกิดรอยร้าว! (ระยะห่างสูงสุดที่ยอมรับได้คือ {s_max_crack_cm:.1f} cm)\n\n"
+            f"**🛠️ Recommendation:** ให้ลดระยะแอดเหล็ก (Spacing) ลง"
         )
 
 with tab2:
@@ -385,7 +428,6 @@ with tab3:
         st.latex(f"t_{{min}} = \\frac{{2(L_x + L_y)}}{{180}} = \\frac{{2({Lx*100:.0f} + {Ly*100:.0f})}}{{180}} = {t_min_req:.2f}\\ cm")
     
     st.markdown(f"**Conclusion:** Selected slab thickness $t = {t_cm}\\ cm$")
-    # FEATURE 3: Structural text equation detailing layer order
     st.markdown(f"*Layer Sequence Selection:* **{layer_sequence}**")
     st.latex(f"d_x = {d_x:.2f}\\ cm, \\quad d_y = {d_y:.2f}\\ cm")
 
@@ -411,7 +453,6 @@ with tab3:
     })
     st.table(calc_df)
 
-    # FEATURE 1: Engineering Detailed Sheet adding Shear Check section
     st.markdown("#### 6. Shear Capacity Check")
     st.latex(f"V_u = \\frac{{W_u \\cdot L_x}}{{2}} = \\frac{{{w_u:.2f} \\times {Lx}}}{{2}} = {V_u:.2f}\\ kg/m")
     st.latex(f"\\phi V_c = 0.75 \\times 0.53 \\sqrt{{f'_c}} \\cdot b \\cdot d_{{min}} = 0.75 \\times 0.53 \\sqrt{{{fc_prime}}} \\times 100 \\times {min_d:.2f} = {phi_Vc:.2f}\\ kg/m")
@@ -419,6 +460,22 @@ with tab3:
         st.success(f"Evaluation: $V_u ({V_u:.1f}\\ kg/m) \\le \\phi V_c ({phi_Vc:.1f}\\ kg/m)$ ➡️ **SAFE (OK)**")
     else:
         st.error(f"Evaluation: $V_u ({V_u:.1f}\\ kg/m) > \\phi V_c ({phi_Vc:.1f}\\ kg/m)$ ➡️ **UNSAFE (FAIL)**")
+
+    # ==================== ADVANCED DETAILING SHEET ====================
+    st.markdown("#### 7. Serviceability: Crack Width Control (การควบคุมรอยร้าว)")
+    st.markdown(f"ตามมาตรฐาน วสท. / ACI 318M ความเค้นใช้งาน $f_s \\approx \\frac{{2}}{{3}} f_y = {fs_mpa:.2f}\\ MPa$")
+    st.latex(f"s_{{max}} = 380 \\left( \\frac{{280}}{{f_s}} \\right) - 2.5 c_c = {s_max_crack_cm:.2f}\\ cm")
+    if crack_control_passed:
+        st.success(f"ระยะแอดเหล็ก X และ Y ที่ใช้ $\\le {s_max_crack_cm:.2f}\\ cm$ ➡️ **SAFE (OK)**")
+    else:
+        st.error(f"มีการใช้ระยะแอดเหล็ก > {s_max_crack_cm:.2f}\\ cm ➡️ **UNSAFE (FAIL)**")
+
+    if needs_corner_steel:
+        st.markdown("#### 8. Torsional Corner Reinforcement (เหล็กกันร้าวที่มุม)")
+        st.info(f"**พื้นประเภทที่ {case_selected}:** ตรวจพบมุมอิสระ (Discontinuous Corners) จำนวน **{corner_count} มุม** ต้องเสริมเหล็กกันร้าว")
+        st.latex(f"L_{{corner}} = \\frac{{L_x}}{{5}} = \\frac{{{Lx}}}{{5}} = {L_corner:.2f}\\ m")
+        st.latex(f"A_{{s,corner}} = A_{{s,pos(max)}} = {As_corner_req:.2f}\\ cm^2/m")
+        st.markdown(f"**รายละเอียดเหล็กมุม:** เสริมตะแกรง **{main_bar} @ {s_corner:.1f} cm** ทั้งตะแกรงบนและล่างที่มุมอิสระ (ระยะทาบ $L_x/5$)")
 
 with tab4:
     st.subheader("📋 Reinforcement Structural Detailing")
@@ -446,8 +503,8 @@ with tab4:
     # Dyn layer setup based on user input
     if layer_sequence == "X-Direction Steel on Bottom-most":
         y_x_bot = covering_cm + r_main                                  
-        y_y_bot = covering_cm + (2 * r_main) + r_temp                   
-        y_x_top = t_cm - covering_cm - r_main                           
+        y_y_bot = covering_cm + (2 * r_main) + r_temp                    
+        y_x_top = t_cm - covering_cm - r_main                            
         y_y_top = t_cm - covering_cm - (2 * r_main) - r_temp            
     else:
         y_y_bot = covering_cm + r_temp
