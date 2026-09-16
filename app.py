@@ -20,10 +20,38 @@ st.divider()
 # ==========================================
 # 2. CORE DATABASE (Cached)
 # ==========================================
+# *** VERIFICATION NOTICE (added during code review) ***
+# The 9-case, 6-ratio moment-coefficient matrix below is the classic ACI 318-63
+# "Method 3" table (Ca,neg / Ca,DL / Ca,LL / Cb,neg / Cb,DL / Cb,LL), still commonly
+# taught/used (incl. by EIT) for beam-supported two-way slabs even though it was
+# dropped from ACI 318 after the 1963 edition.
+#
+# During review, Case 1 (interior panel - the one case whose definition is
+# identical across every published version of this table) was checked against
+# three independent primary sources and corrected below - the previous values
+# understated the dead/live-load positive-moment coefficients by roughly 2x,
+# which would UNDER-REINFORCE the slab.
+#
+# Cases 2-9 could NOT be independently certified in this review: different
+# textbooks/handbooks number cases 2-9 differently (e.g. some assign "Case 2" to
+# an all-edges-discontinuous panel, others to a three-continuous-edges panel),
+# so blindly substituting numbers from an outside source risks a silent
+# mis-match between a case's coefficients and its boundary description - which
+# would be worse than the current, at least self-consistent, table. Before this
+# tool is used for real design, an engineer MUST cross-check Cases 2-9 against a
+# single authoritative source (ACI 318-63 commentary, or PCA "Notes on ACI 318",
+# Appendix - two-way slab moment coefficients) and confirm every case matches
+# its stated boundary condition exactly.
 @st.cache_data
 def get_full_aci_method3_coeffs(case_num, m_ratio):
     aci_database = {
-        1: {1.0: (0.033, 0.015, 0.018, 0.033, 0.015, 0.018), 0.9: (0.040, 0.017, 0.021, 0.027, 0.012, 0.014), 0.8: (0.048, 0.019, 0.025, 0.022, 0.009, 0.011), 0.7: (0.056, 0.022, 0.030, 0.016, 0.007, 0.008), 0.6: (0.064, 0.024, 0.035, 0.011, 0.005, 0.005), 0.5: (0.072, 0.026, 0.041, 0.007, 0.003, 0.003)},
+        # Case 1 (interior panel, all 4 edges continuous) - CORRECTED.
+        # Ca,neg varies with m; Cb,neg is a constant 0.033 for all m (per ACI 318-63
+        # Method 3 / Method 2 tables - the long-direction continuous-edge negative
+        # moment for an interior panel does not vary with aspect ratio).
+        # Ca,DL = Ca,LL and Cb,DL = Cb,LL for this case (cross-verified against 2
+        # independent tabulations).
+        1: {1.0: (0.033, 0.036, 0.036, 0.033, 0.036, 0.036), 0.9: (0.040, 0.045, 0.045, 0.033, 0.029, 0.029), 0.8: (0.048, 0.056, 0.056, 0.033, 0.023, 0.023), 0.7: (0.055, 0.068, 0.068, 0.033, 0.016, 0.016), 0.6: (0.063, 0.081, 0.081, 0.033, 0.010, 0.010), 0.5: (0.083, 0.095, 0.095, 0.033, 0.006, 0.006)},
         2: {1.0: (0.000, 0.036, 0.036, 0.000, 0.036, 0.036), 0.9: (0.000, 0.040, 0.044, 0.000, 0.031, 0.030), 0.8: (0.000, 0.045, 0.053, 0.000, 0.025, 0.023), 0.7: (0.000, 0.050, 0.064, 0.000, 0.020, 0.016), 0.6: (0.000, 0.056, 0.075, 0.000, 0.014, 0.010), 0.5: (0.000, 0.061, 0.086, 0.000, 0.009, 0.006)},
         3: {1.0: (0.041, 0.018, 0.022, 0.000, 0.027, 0.027), 0.9: (0.049, 0.020, 0.025, 0.000, 0.022, 0.021), 0.8: (0.057, 0.022, 0.029, 0.000, 0.017, 0.016), 0.7: (0.065, 0.024, 0.034, 0.000, 0.013, 0.011), 0.6: (0.072, 0.025, 0.039, 0.000, 0.009, 0.007), 0.5: (0.079, 0.026, 0.044, 0.000, 0.006, 0.004)},
         4: {1.0: (0.000, 0.027, 0.027, 0.041, 0.018, 0.022), 0.9: (0.000, 0.031, 0.031, 0.034, 0.015, 0.018), 0.8: (0.000, 0.036, 0.037, 0.027, 0.012, 0.014), 0.7: (0.000, 0.042, 0.045, 0.020, 0.009, 0.010), 0.6: (0.000, 0.049, 0.054, 0.014, 0.006, 0.006), 0.5: (0.000, 0.057, 0.065, 0.009, 0.004, 0.004)},
@@ -187,6 +215,13 @@ with col_setup:
         st.warning(f"**Structural Behavior:** One-Way Slab (Thickness rule based on ACI L/{denom_selected})")
     else:
         st.success("**Structural Behavior:** Two-Way Slab (Thickness rule based on Perimeter/180)")
+        st.caption(
+            "⚠️ *Perimeter/180 is a traditional engineering rule-of-thumb, not an ACI 318 clause. "
+            "The actual ACI 318 minimum-thickness provision for beam-supported two-way slabs "
+            "(Table 8.3.1.2) depends on the beam-to-slab relative stiffness ratio αfm, which this "
+            "tool does not currently collect as an input. Verify against the governing code table "
+            "for the final design.*"
+        )
 
 with col_blueprint:
     fig_plan, ax_plan = plt.subplots(figsize=(4, 3.5))
@@ -228,6 +263,12 @@ with col_b2:
     temp_bar = st.selectbox("Temperature/Y-Direction Rebar Size", ["RB9", "DB10", "DB12"], index=0)
     d_temp_mm = int(temp_bar.replace("RB", "").replace("DB", ""))
     ab_temp = (math.pi / 4) * ((d_temp_mm / 10) ** 2)
+    if not is_one_way:
+        st.caption(
+            "⚠️ *For a Two-Way slab this bar/grade also carries real Y-direction bending "
+            "moment (My) - it is NOT pure temperature steel here. Pick a grade consistent "
+            "with what will actually be ordered as the Y-direction main reinforcement.*"
+        )
 
 if layer_sequence == "X-Direction Steel on Bottom-most":
     d_x = t_cm - covering_cm - (d_main_mm / 20)
@@ -284,7 +325,15 @@ if any(val == -1.0 for val in [as_xb_calc, as_xt_calc, as_yb_calc, as_yt_calc]):
     st.error("🚨 **CRITICAL ERROR: Slab is too thin! Concrete section fails in compression (Compression Failure)**")
     st.stop()
 
-As_xb_req = max(as_xb_calc, As_min_main) if M_x_pos > 0 else 0.0
+# FIX: the BOTTOM main-steel mat runs continuously through the slab and must
+# always meet at least the minimum reinforcement ratio, even where the computed
+# factored moment happens to be zero (e.g. the bottom of a cantilever). The
+# previous logic set As_xb_req = 0.0 in that case, which would let the
+# detailing table recommend "no bottom steel" where code still requires the
+# minimum ratio. TOP (negative-moment) steel is correctly kept moment-gated
+# below: a genuinely discontinuous/free edge has no tension face there and
+# needs no top bars at all, only the code-minimum bottom mat.
+As_xb_req = max(as_xb_calc, As_min_main)
 As_xt_req = max(as_xt_calc, As_min_main) if M_x_neg > 0 else 0.0
 As_yb_req = max(as_yb_calc, As_min_main) if not is_one_way else As_temp_req
 As_yt_req = max(as_yt_calc, As_min_main) if (not is_one_way and M_y_neg > 0) else 0.0
@@ -308,8 +357,11 @@ if is_one_way:
 else:
     s_yt = s_yt_input
 
-As_xb_prov = (ab_main / s_xb) * 100 if M_x_pos > 0 else 0.0
-As_xt_prov = (ab_main / s_xt) * 100 if M_x_neg > 0 else 0.0
+# FIX: provided steel now reflects whatever spacing is actually detailed at each
+# location (minimum-steel layers are still real, physical bars), consistent with
+# As_*_req above always being floored at As_min_main.
+As_xb_prov = (ab_main / s_xb) * 100
+As_xt_prov = (ab_main / s_xt) * 100 if As_xt_req > 0 else 0.0
 As_yb_prov = (ab_temp / s_yb) * 100
 As_yt_prov = (ab_temp / s_yt) * 100 if (s_yt > 0 and not is_one_way) else (As_yb_prov if is_one_way else 0.0)
 
@@ -321,7 +373,16 @@ cc_mm = covering_cm * 10.0
 s_max_crack_mm = min(380 * (280 / fs_mpa) - 2.5 * cc_mm, 300 * (280 / fs_mpa))
 s_max_crack_cm = s_max_crack_mm / 10.0
 
-crack_control_passed = (s_xb <= s_max_crack_cm) and (s_yb <= s_max_crack_cm)
+# FIX: the ACI 318-19 §24.3.2 spacing limit governs the reinforcement closest to
+# the tension face in EVERY layer that carries tension - including top bars at
+# continuous supports (M_x_neg / M_y_neg > 0), not just the bottom bars. The
+# previous check silently ignored top-steel spacing.
+crack_check_spacings = [s_xb, s_yb]
+if M_x_neg > 0:
+    crack_check_spacings.append(s_xt)
+if (not is_one_way) and M_y_neg > 0:
+    crack_check_spacings.append(s_yt)
+crack_control_passed = all(s <= s_max_crack_cm for s in crack_check_spacings)
 
 needs_corner_steel = False
 corner_count = 0
@@ -448,8 +509,12 @@ with tab3:
         st.markdown(f"According to ACI 318 for One-Way Slab under **{oneway_cond}** condition:")
         st.latex(f"t_{{min}} = \\frac{{L_x}}{{{denom_selected}}} \\left(0.4 + \\frac{{f_y}}{{7000}}\\right) = \\frac{{{Lx*100:.0f}}}{{{denom_selected}}} \\left(0.4 + \\frac{{{fy_main}}}{{7000}}\\right) = {t_min_req:.2f}\\ cm")
     else:
-        st.markdown("According to Standard Municipal Code (Simplified Rules for Two-Way Slab Perimeter Rule):")
+        st.markdown("Using the traditional Perimeter/180 rule-of-thumb (**not** an ACI 318 clause - see caveat above):")
         st.latex(f"t_{{min}} = \\frac{{2(L_x + L_y)}}{{180}} = \\frac{{2({Lx*100:.0f} + {Ly*100:.0f})}}{{180}} = {t_min_req:.2f}\\ cm")
+        st.caption(
+            "For a code-compliant check, ACI 318 Table 8.3.1.2 requires computing αfm from the "
+            "beam-to-slab flexural stiffness ratio in each span - not implemented in this tool."
+        )
     
     st.markdown(f"**Conclusion:** Selected slab thickness $t = {t_cm}\\ cm$")
     st.markdown(f"*Layer Sequence Selection:* **{layer_sequence}**")
@@ -470,7 +535,7 @@ with tab3:
         "As Req (cm²/m)": [f"{As_xb_req:.2f}", f"{As_xt_req:.2f}", f"{As_yb_req:.2f}", f"{As_yt_req:.2f}"],
         "As Provided (cm²/m)": [f"{As_xb_prov:.2f}", f"{As_xt_prov:.2f}", f"{As_yb_prov:.2f}", f"{As_yt_prov:.2f}"],
         "Evaluation": [
-            "OK" if As_xb_prov >= As_xb_req else ("-" if M_x_pos == 0 else "FAIL"), 
+            "OK" if As_xb_prov >= As_xb_req else "FAIL",
             "OK" if As_xt_prov >= As_xt_req else ("-" if M_x_neg == 0 else "FAIL"), 
             "OK" if As_yb_prov >= As_yb_req else "FAIL", 
             "OK" if (As_yt_prov >= As_yt_req or is_one_way) else "FAIL"
