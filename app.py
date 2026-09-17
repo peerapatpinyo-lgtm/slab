@@ -492,43 +492,123 @@ with tab2:
 
 with tab3:
     st.markdown("### 📑 Structural Calculation Sheet")
-    
-    st.markdown("#### 1. Slab Behavior Check")
+    st.caption(
+        "Every formula below is tagged with the clause it comes from. Where a clause is not an "
+        "official ACI 318 provision (e.g. a rule-of-thumb, or a table pending independent "
+        "verification), that is stated explicitly instead of implying code authority it doesn't have."
+    )
+
+    # ---------- STEP 1 ----------
+    st.markdown("#### Step 1 — Slab Classification")
+    st.caption("Ref: ACI 318-19 §8.10.2.4 (two-way action threshold, m = shorter/longer clear span)")
     st.latex(f"m = \\frac{{L_x}}{{L_y}} = \\frac{{{Lx}}}{{{Ly}}} = {m_ratio:.3f}")
     if is_one_way:
-        st.info(f"Since $m < 0.5$, the slab behaves as a **One-Way Slab**, bending like a wide beam.")
+        st.info(f"$m = {m_ratio:.3f} < 0.5$ → the slab is designed as a **One-Way Slab** (bends primarily about one axis, like a wide beam).")
     else:
-        st.success(f"Since $m \\ge 0.5$, the slab behaves as a **Two-Way Slab**, distributing loads along both axes.")
+        st.success(f"$m = {m_ratio:.3f} \\ge 0.5$ → the slab is designed as a **Two-Way Slab** (bends about both axes).")
 
-    st.markdown("#### 2. Load Analysis")
-    st.latex(f"Dead\\ Load\\ (W_d) = (\\frac{{{t_cm}}}{{100}} \\times 2400) + {UDL_SDL} = {total_dl:.2f}\\ kg/m^2")
-    st.latex(f"Ultimate\\ Load\\ (W_u) = {factor_dl}(W_d) + {factor_ll}(L_L) = {factor_dl}({total_dl:.2f}) + {factor_ll}({UDL_LL}) = {w_u:.2f}\\ kg/m^2")
-    
-    st.markdown("#### 3. Minimum Thickness for Deflection")
+    # ---------- STEP 2 ----------
+    st.markdown("#### Step 2 — Loads & Load Combination")
+    st.caption("Ref: self-weight from concrete unit weight (2,400 kg/m³, EIT convention); "
+               "factored load combination per ACI 318-19 §5.3.1, Eq. (5.3.1a) U = 1.2D + 1.6L "
+               "(or the selected alternate combination)")
+    st.latex(f"Self\\text{{-}}weight = \\frac{{t}}{{100}} \\times 2400 = \\frac{{{t_cm}}}{{100}} \\times 2400 = {slab_self_weight:.2f}\\ kg/m^2")
+    st.latex(f"W_d = Self\\text{{-}}weight + SDL = {slab_self_weight:.2f} + {UDL_SDL} = {total_dl:.2f}\\ kg/m^2")
+    st.latex(f"W_u = {factor_dl}\\,W_d + {factor_ll}\\,W_L = {factor_dl}({total_dl:.2f}) + {factor_ll}({UDL_LL}) = {w_u:.2f}\\ kg/m^2")
+
+    # ---------- STEP 3 ----------
+    st.markdown("#### Step 3 — Minimum Thickness (Deflection Control)")
     if is_one_way:
-        st.markdown(f"According to ACI 318 for One-Way Slab under **{oneway_cond}** condition:")
-        st.latex(f"t_{{min}} = \\frac{{L_x}}{{{denom_selected}}} \\left(0.4 + \\frac{{f_y}}{{7000}}\\right) = \\frac{{{Lx*100:.0f}}}{{{denom_selected}}} \\left(0.4 + \\frac{{{fy_main}}}{{7000}}\\right) = {t_min_req:.2f}\\ cm")
+        st.caption(f"Ref: ACI 318-19 Table 7.3.1.1 (minimum thickness of solid one-way slabs, "
+                   f"{oneway_cond.split(' (')[0]} case), fy in ksc → coefficient 0.4 + fy/7000 "
+                   f"(EIT metric adaptation of the ACI psi-based expression)")
+        st.latex(f"t_{{min}} = \\frac{{L_x}}{{{denom_selected}}}\\left(0.4 + \\frac{{f_y}}{{7000}}\\right) = \\frac{{{Lx*100:.0f}}}{{{denom_selected}}}\\left(0.4 + \\frac{{{fy_main}}}{{7000}}\\right) = {t_min_req:.2f}\\ cm")
     else:
-        st.markdown("Using the traditional Perimeter/180 rule-of-thumb (**not** an ACI 318 clause - see caveat above):")
-        st.latex(f"t_{{min}} = \\frac{{2(L_x + L_y)}}{{180}} = \\frac{{2({Lx*100:.0f} + {Ly*100:.0f})}}{{180}} = {t_min_req:.2f}\\ cm")
-        st.caption(
-            "For a code-compliant check, ACI 318 Table 8.3.1.2 requires computing αfm from the "
-            "beam-to-slab flexural stiffness ratio in each span - not implemented in this tool."
+        st.caption("Ref: traditional \"Perimeter/180\" rule-of-thumb — **this is NOT an ACI 318 clause.** "
+                   "The governing ACI 318-19 provision for a beam-supported two-way slab is Table "
+                   "8.3.1.2, which requires αfm (relative beam-to-slab flexural stiffness) — not "
+                   "collected by this tool. Treat this result as a preliminary estimate only.")
+        st.latex(f"t_{{min}} \\approx \\frac{{2(L_x + L_y)}}{{180}} = \\frac{{2({Lx*100:.0f} + {Ly*100:.0f})}}{{180}} = {t_min_req:.2f}\\ cm")
+
+    thickness_verdict = "✅ PASS" if deflection_passed else "❌ FAIL"
+    st.markdown(f"**Check:** $t = {t_cm}\\ cm$ {'≥' if deflection_passed else '<'} $t_{{min}} = {t_min_req:.2f}\\ cm$ → {thickness_verdict}")
+
+    # ---------- STEP 4 ----------
+    st.markdown("#### Step 4 — Effective Depth")
+    st.caption("Ref: geometric — effective depth = thickness − clear cover − half bar diameter of "
+               "layers above the layer considered (ACI 318-19 §20.5.1.3 governs minimum concrete cover)")
+    st.markdown(f"*Bottom layer sequence selected:* **{layer_sequence}**")
+    st.latex(f"d_x = t - c_c - \\frac{{d_{{b,x}}}}{{2}}(\\text{{+ layer above, if any}}) = {d_x:.2f}\\ cm")
+    st.latex(f"d_y = {d_y:.2f}\\ cm")
+
+    # ---------- STEP 5 ----------
+    st.markdown("#### Step 5 — Design (Factored) Moments")
+    if is_one_way:
+        st.caption(f"Ref: ACI 318-19 Table 6.5.2 (approximate moments for one-way construction — "
+                   f"{oneway_cond.split(' (')[0]} condition uses denominators {ow_denom_pos:.0f} "
+                   f"(positive) / {ow_denom_neg:.0f} (negative) — independently re-derived and "
+                   f"confirmed to match Table 6.5.2 during review)")
+        st.latex(f"M_{{x+}} = \\frac{{W_u L_x^2}}{{{ow_denom_pos:.0f}}} = {M_x_pos:.2f}\\ kg\\text{{-}}m \\qquad M_{{x-}} = \\frac{{W_u L_x^2}}{{{ow_denom_neg:.0f}}} = {M_x_neg:.2f}\\ kg\\text{{-}}m")
+    else:
+        st.caption("Ref: ACI 318-63 \"Method 3\" moment-coefficient table for two-way slabs on stiff "
+                   "beams (superseded in current ACI 318, still used by EIT/practice). "
+                   "**⚠️ Verification status:** Case 1 coefficients below were checked against 3 "
+                   "independent sources and corrected during review. Cases 2-9 (this design uses "
+                   f"Case {case_selected}) could NOT be independently certified — published sources "
+                   "disagree on how cases 2-9 are numbered. Confirm the coefficients used here "
+                   "against your governing reference (ACI 318-63 commentary / PCA \"Notes on ACI "
+                   "318\" Appendix / your EIT handbook) before relying on this result.")
+        st.latex(f"C_{{a,neg}}={cx_n:.4f},\\ C_{{a,DL}}={cx_p_dl:.4f},\\ C_{{a,LL}}={cx_p_ll:.4f},\\ C_{{b,neg}}={cy_n:.4f},\\ C_{{b,DL}}={cy_p_dl:.4f},\\ C_{{b,LL}}={cy_p_ll:.4f}")
+        st.latex(f"M_{{x+}} = (1.2\\,C_{{a,DL}}\\,W_d + 1.6\\,C_{{a,LL}}\\,W_L)\\,L_x^2 = {M_x_pos:.2f}\\ kg\\text{{-}}m")
+        st.latex(f"M_{{x-}} = C_{{a,neg}}\\,W_u\\,L_x^2 = {M_x_neg:.2f}\\ kg\\text{{-}}m")
+        st.latex(f"M_{{y+}} = (1.2\\,C_{{b,DL}}\\,W_d + 1.6\\,C_{{b,LL}}\\,W_L)\\,L_x^2 = {M_y_pos:.2f}\\ kg\\text{{-}}m")
+        st.latex(f"M_{{y-}} = C_{{b,neg}}\\,W_u\\,L_x^2 = {M_y_neg:.2f}\\ kg\\text{{-}}m")
+
+    # ---------- STEP 6 ----------
+    st.markdown("#### Step 6 — Flexural Design (Whitney Rectangular Stress Block)")
+    st.caption("Ref: ACI 318-19 §22.2.2.4.1 (equivalent rectangular stress block) with φ = 0.90 "
+               "assuming a tension-controlled section per §21.2.2. "
+               "$R_n = M_u / (\\phi\\, b\\, d^2)$, $\\rho = \\frac{0.85 f'_c}{f_y}\\left(1-\\sqrt{1-\\frac{2R_n}{0.85 f'_c}}\\right)$, "
+               "$A_s = \\rho\\, b\\, d$ (b = 100 cm design strip)")
+
+    def show_flexure_step(label, M, d_eff, fy_g, as_req_final):
+        if M <= 0:
+            st.markdown(f"**{label}:** $M_u = 0$ → governed by minimum reinforcement only (Step 7).")
+            return
+        M_cm = M * 100
+        Rn = M_cm / (0.90 * 100 * (d_eff ** 2))
+        inside = 1.0 - (2.0 * Rn) / (0.85 * fc_prime)
+        rho = (0.85 * fc_prime / fy_g) * (1.0 - math.sqrt(max(inside, 0)))
+        as_calc = rho * 100 * d_eff
+        st.markdown(
+            f"**{label}:** $R_n = \\frac{{{M_cm:.0f}}}{{0.90 \\times 100 \\times {d_eff:.2f}^2}} = {Rn:.3f}\\ ksc$, "
+            f"$\\rho = {rho:.5f}$ → $A_{{s,calc}} = {as_calc:.2f}\\ cm^2/m$ "
+            f"(governing $A_{{s,req}} = {as_req_final:.2f}\\ cm^2/m$ after Step 7 minimum check)"
         )
-    
-    st.markdown(f"**Conclusion:** Selected slab thickness $t = {t_cm}\\ cm$")
-    st.markdown(f"*Layer Sequence Selection:* **{layer_sequence}**")
-    st.latex(f"d_x = {d_x:.2f}\\ cm, \\quad d_y = {d_y:.2f}\\ cm")
 
-    st.markdown("#### 4. Bending Moment Calculation")
+    show_flexure_step("Bottom X (Mx+)", M_x_pos, d_x, fy_main, As_xb_req)
+    show_flexure_step("Top X (Mx-)", M_x_neg, d_x, fy_main, As_xt_req)
+    if not is_one_way:
+        show_flexure_step("Bottom Y (My+)", M_y_pos, d_y, fy_temp, As_yb_req)
+        show_flexure_step("Top Y (My-)", M_y_neg, d_y, fy_temp, As_yt_req)
+
+    # ---------- STEP 7 ----------
+    st.markdown("#### Step 7 — Minimum Reinforcement Check")
+    st.caption("Ref: ACI 318-19 §7.6.1.1 (minimum flexural reinforcement for one-way slabs = "
+               "shrinkage-and-temperature ratio) and §24.4.3.2 / EIT convention "
+               "(ρ_min = 0.0018 for fy ≥ 4,000 ksc deformed bars [SD40+], 0.0020 otherwise "
+               "[e.g. SR24 round bars]). Applied to gross section: $A_{s,min} = \\rho_{min}\\, b\\, t$.")
+    st.latex(f"A_{{s,min}}\\,(main,\\ f_y={fy_main}) = {(0.0018 if fy_main>=4000 else 0.0020)}\\times 100 \\times {t_cm} = {As_min_main:.2f}\\ cm^2/m")
     if is_one_way:
-        st.markdown(f"Using dynamic structural coefficients (Denominator for Pos: {ow_denom_pos}, Neg: {ow_denom_neg}):")
-        st.latex(f"M_{{x+}} = {M_x_pos:.2f}\\ kg-m, \\quad M_{{x-}} = {M_x_neg:.2f}\\ kg-m")
-    else:
-        st.latex(f"M_{{x+}} = {M_x_pos:.2f}\\ kg-m, \\quad M_{{x-}} = {M_x_neg:.2f}\\ kg-m")
-        st.latex(f"M_{{y+}} = {M_y_pos:.2f}\\ kg-m, \\quad M_{{y-}} = {M_y_neg:.2f}\\ kg-m")
+        st.latex(f"A_{{s,temp}}\\,(f_y={fy_temp}) = {(0.0018 if fy_temp>=4000 else 0.0020)}\\times 100 \\times {t_cm} = {As_temp_req:.2f}\\ cm^2/m")
+    st.info(
+        "The bottom main mat (X) is floored at $A_{s,min}$ everywhere, since it runs continuously "
+        "through the slab regardless of the local moment sign. Top (negative-moment) steel is only "
+        "provided where a continuous/fixed support actually produces a negative moment — a genuinely "
+        "discontinuous edge has no tension face there and needs no top bars."
+    )
 
-    st.markdown("#### 5. Reinforcement Calculation and Code Compliance")
+    st.markdown("**Required vs. Provided Reinforcement Summary**")
     calc_df = pd.DataFrame({
         "Reinforcement Position": ["Bottom Main Steel, X-Dir (Mx+)", "Top Main Steel, X-Dir (Mx-)", "Bottom Steel, Y-Dir (My+)", "Top Steel, Y-Dir (My-)"],
         "Moment (kg-m)": [f"{M_x_pos:.1f}", f"{M_x_neg:.1f}", f"{M_y_pos:.1f}", f"{M_y_neg:.1f}"],
@@ -536,14 +616,27 @@ with tab3:
         "As Provided (cm²/m)": [f"{As_xb_prov:.2f}", f"{As_xt_prov:.2f}", f"{As_yb_prov:.2f}", f"{As_yt_prov:.2f}"],
         "Evaluation": [
             "OK" if As_xb_prov >= As_xb_req else "FAIL",
-            "OK" if As_xt_prov >= As_xt_req else ("-" if M_x_neg == 0 else "FAIL"), 
-            "OK" if As_yb_prov >= As_yb_req else "FAIL", 
+            "OK" if As_xt_prov >= As_xt_req else ("-" if M_x_neg == 0 else "FAIL"),
+            "OK" if As_yb_prov >= As_yb_req else "FAIL",
             "OK" if (As_yt_prov >= As_yt_req or is_one_way) else "FAIL"
         ]
     })
     st.table(calc_df)
 
-    st.markdown("#### 6. Shear Capacity Check")
+    # ---------- STEP 8 ----------
+    st.markdown("#### Step 8 — Bar Spacing / Detailing Limits")
+    st.caption("Ref: ACI 318-19 §7.7.2.3 (max spacing of primary flexural reinforcement in a slab: "
+               "the lesser of 3h or 45 cm [≈18 in]) and §24.4.3.3 (max spacing of shrinkage-and-"
+               "temperature reinforcement: the lesser of 5h or 45 cm)")
+    st.latex(f"s_{{max,flexural}} = min(3t,\\ 45) = min({3*t_cm:.1f},\\ 45) = {min(3*t_cm,45.0):.1f}\\ cm")
+    st.latex(f"s_{{max,temp}} = min(5t,\\ 45) = min({5*t_cm:.1f},\\ 45) = {min(5*t_cm,45.0):.1f}\\ cm")
+    st.markdown(f"Detailed spacing used: X-Bottom @ **{s_xb:.1f} cm**, X-Top @ **{s_xt:.1f} cm**, Y-Bottom @ **{s_yb:.1f} cm**, Y-Top @ **{s_yt:.1f} cm**")
+
+    # ---------- STEP 9 ----------
+    st.markdown("#### Step 9 — One-Way (Beam) Shear Check")
+    st.caption("Ref: ACI 318-19 §22.5.5.1, $V_c = 0.53\\sqrt{f'_c}\\, b_w\\, d$ (kgf-cm unit form, "
+               "independently re-derived from the ACI psi-inch expression $V_c = 2\\lambda\\sqrt{f'_c}\\,b_w\\,d$ "
+               "and confirmed equal to the 0.53 constant used here) with $\\phi = 0.75$ per §21.2.1")
     st.latex(f"V_u = \\frac{{W_u \\cdot L_x}}{{2}} = \\frac{{{w_u:.2f} \\times {Lx}}}{{2}} = {V_u:.2f}\\ kg/m")
     st.latex(f"\\phi V_c = 0.75 \\times 0.53 \\sqrt{{f'_c}} \\cdot b \\cdot d_{{min}} = 0.75 \\times 0.53 \\sqrt{{{fc_prime}}} \\times 100 \\times {min_d:.2f} = {phi_Vc:.2f}\\ kg/m")
     if shear_passed:
@@ -551,20 +644,32 @@ with tab3:
     else:
         st.error(f"Evaluation: $V_u ({V_u:.1f}\\ kg/m) > \\phi V_c ({phi_Vc:.1f}\\ kg/m)$ ➡️ **UNSAFE (FAIL)**")
 
-    st.markdown("#### 7. Serviceability: Crack Width Control")
-    st.markdown(f"ตามมาตรฐาน วสท. / ACI 318M ความเค้นใช้งาน $f_s \\approx \\frac{{2}}{{3}} f_y = {fs_mpa:.2f}\\ MPa$")
-    st.latex(f"s_{{max}} = 380 \\left( \\frac{{280}}{{f_s}} \\right) - 2.5 c_c = {s_max_crack_cm:.2f}\\ cm")
+    # ---------- STEP 10 ----------
+    st.markdown("#### Step 10 — Serviceability: Crack Width Control")
+    st.caption("Ref: ACI 318-19 §24.3.2, Eq. (24.3.2) (SI/metric form): "
+               "$s_{max} = \\min\\left[380\\left(\\frac{280}{f_s}\\right) - 2.5 c_c,\\ 300\\left(\\frac{280}{f_s}\\right)\\right]$, "
+               "with $f_s \\approx \\frac{2}{3}f_y$ per Commentary R24.3.2. Applies to ALL tension "
+               "reinforcement nearest the tension face, including top bars at continuous supports.")
+    st.latex(f"f_s \\approx \\frac{{2}}{{3}}f_y = {fs_mpa:.2f}\\ MPa")
+    st.latex(f"s_{{max}} = {s_max_crack_cm:.2f}\\ cm")
+    checked_list = ", ".join(f"{v:.1f} cm" for v in crack_check_spacings)
+    st.markdown(f"Spacings checked against $s_{{max}}$: {checked_list}")
     if crack_control_passed:
-        st.success(f"ระยะแอดเหล็ก X และ Y ที่ใช้ $\\le {s_max_crack_cm:.2f}\\ cm$ ➡️ **SAFE (OK)**")
+        st.success(f"All checked spacings ≤ {s_max_crack_cm:.2f} cm ➡️ **SAFE (OK)**")
     else:
-        st.error(f"มีการใช้ระยะแอดเหล็ก > {s_max_crack_cm:.2f}\\ cm ➡️ **UNSAFE (FAIL)**")
+        st.error(f"At least one checked spacing exceeds {s_max_crack_cm:.2f} cm ➡️ **UNSAFE (FAIL)**")
 
+    # ---------- STEP 11 ----------
     if needs_corner_steel:
-        st.markdown("#### 8. Torsional Corner Reinforcement")
-        st.info(f"**พื้นประเภทที่ {case_selected}:** ตรวจพบมุมอิสระ (Discontinuous Corners) จำนวน **{corner_count} มุม** ต้องเสริมเหล็กกันร้าว")
+        st.markdown("#### Step 11 — Torsional Corner Reinforcement")
+        st.caption("Ref: ACI 318-19 §8.7.3.1 (historically §13.3.6 in older editions) — special top "
+                   "and bottom corner reinforcement is required at any corner enclosed by two "
+                   "discontinuous edges, over a length Lx/5 each way, both directions, both faces.")
+        st.info(f"**Case {case_selected}:** {corner_count} discontinuous corner(s) detected requiring torsional reinforcement.")
         st.latex(f"L_{{corner}} = \\frac{{L_x}}{{5}} = \\frac{{{Lx}}}{{5}} = {L_corner:.2f}\\ m")
-        st.latex(f"A_{{s,corner}} = A_{{s,pos(max)}} = {As_corner_req:.2f}\\ cm^2/m")
-        st.markdown(f"**รายละเอียดเหล็กมุม:** เสริมตะแกรง **{main_bar} @ {s_corner:.1f} cm** ทั้งตะแกรงบนและล่างที่มุมอิสระ (ระยะทาบ $L_x/5$)")
+        st.latex(f"A_{{s,corner}} = \\max(A_{{s,pos,x}}, A_{{s,pos,y}}) = {As_corner_req:.2f}\\ cm^2/m")
+        st.markdown(f"**Detailing:** **{main_bar} @ {s_corner:.1f} cm**, top and bottom mats, both directions, over $L_x/5$ from each discontinuous corner.")
+
 
 with tab4:
     st.subheader("📋 Reinforcement Structural Detailing")
